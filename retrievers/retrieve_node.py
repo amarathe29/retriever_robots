@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
 
-from geometry_msgs.msg import Twist, Pose, Point
+from geometry_msgs.msg import Twist, Pose, Quaternion
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
@@ -17,9 +17,11 @@ from enum import Enum
 
 class StateMachine(Enum):
     IDLE = 0
-    GRABBING = 1
-    RETURNING = 2
-    NAVIGATING = 3
+    NAVIGATING = 1
+    GRABBING = 2
+    RETURNING = 3
+    FIND_POSE = 4
+    RECOVERY = 5
 
 
 class RetrieveNode(Node):
@@ -91,6 +93,12 @@ class RetrieveNode(Node):
 
         self.marker_size = 0.05
 
+        self.state = StateMachine.IDLE
+        self.pose = None
+        self.odom = None
+        self.request_pose = None
+        self.grab_pose = None
+
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
         self.pose = msg
@@ -109,8 +117,10 @@ class RetrieveNode(Node):
     def cam_callback(
         self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
     ) -> Pose:
-
-        self.new_pose = Pose()
+        if self.state == StateMachine.IDLE:
+            self.grab_pose = Pose()
+            self.marker_location = None
+            return
 
         if (self.camera_matrix is None) or (self.distortion_coeffs is None):
             self.logger.warning("No camera info received yet, cannot process image")
@@ -170,42 +180,129 @@ class RetrieveNode(Node):
 
             # find distance to block
             depth_val = depth[marker_center_y, marker_center_x]
-            if depth_msg.encoding == "32FC1":
-                distance = float(depth_val)
-            elif depth_msg.encoding == "16UC1":
-                distance = float(depth_val) / 1000.0  # mm to meters
-            else:
-                self.get_logger().warn(f"Unsupported encoding: {depth_msg.encoding}")
-                return
-            closer = (
-                marker_center_top
-                if marker_center_top[1] > marker_center_bot[1]
-                else marker_center_bot
-            )
-            further = (
-                marker_center_bot if closer == marker_center_top else marker_center_top
-            )
+            if (
+                self.state == StateMachine.GRABBING
+                or self.state == StateMachine.RETURNING
+            ):
+                self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
-            dy = further[1] - closer[1]
-            dx = further[0] - closer[0]
+            if self.state == StateMachine.FIND_POSE:
 
-            angle = np.arctan2(dy, dx)
-            roll = 0.0  # Robot can't roll
-            pitch = 0.0  # Robot can't pitch, it's only a batter
+                if depth_msg.encoding == "32FC1":
+                    distance = float(depth_val)
+                elif depth_msg.encoding == "16UC1":
+                    distance = float(depth_val) / 1000.0  # mm to meters
+                else:
+                    self.get_logger().warn(
+                        f"Unsupported encoding: {depth_msg.encoding}"
+                    )
+                    return
+                closer = (
+                    marker_center_top
+                    if marker_center_top[1] > marker_center_bot[1]
+                    else marker_center_bot
+                )
+                further = (
+                    marker_center_bot
+                    if closer == marker_center_top
+                    else marker_center_top
+                )
 
-            quaternion = tf_transformations.quaternion_from_euler(roll, pitch, angle)
+                dy = further[1] - closer[1]
+                dx = further[0] - closer[0]
 
-            self.new_pose.position.x = self.odom.pose.position.x
-            self.new_pose.position.y = distance * np.tan(angle)
-            self.new_pose.position.z = width
+                angle = np.arctan2(dy, dx)
+                roll = 0.0  # Robot can't roll
+                pitch = 0.0  # Robot can't pitch, it's only a batter
 
-            self.new_pose.orientation.x = quaternion[0]
-            self.new_pose.orientation.y = quaternion[1]
-            self.new_pose.orientation.z = quaternion[2]
-            self.new_pose.orientation.w = quaternion[3]
+                quaternion = tf_transformations.quaternion_from_euler(
+                    roll, pitch, angle
+                )
+
+                self.grab_pose.position.x = self.odom.pose.position.x
+                self.grab_pose.position.y = distance * np.tan(angle)
+                self.grab_pose.position.z = 0.0  # Robot is ground vehicle
+
+                self.grab_pose.orientation.x = quaternion[0]
+                self.grab_pose.orientation.y = quaternion[1]
+                self.grab_pose.orientation.z = quaternion[2]
+                self.grab_pose.orientation.w = quaternion[3]
 
     def retrieve_callback(self, goal_handle):
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
+
+        if self.state == StateMachine.IDLE:
+            self.request_pose = goal_handle.request.goal_pose
+            self.state = StateMachine.NAVIGATING
+            self.logger.info(
+                f"Received retrieve action goal: {self.request}, entering Navigation state"
+            )
+
+        if self.state == StateMachine.NAVIGATING:
+            reached = self.go_to_pose(self.request_pose)
+            if reached:
+                self.state = StateMachine.FIND_POSE
+                self.logger.info(
+                    f"Reached block pose, entering Find Pose state to orient around block"
+                )
+        if self.state == StateMachine.FIND_POSE:
+            reached = self.go_to_pose(self.grab_pose)
+            if reached:
+                self.state = StateMachine.GRABBING
+                self.logger.info(
+                    f"Reached grab pose, entering Grabbing state to attempt to grab block"
+                )
+
+    def yaw_from_quaternion(q: Quaternion) -> float:
+        _, _, yaw = tf_transformations.euler_from_quaternion([q.x, q.y, q.z, q.w])
+        return np.float64(yaw)
+
+    def angle_wrap(angle: float) -> float:
+        while angle > np.pi:
+            angle -= 2 * np.pi
+        while angle < -np.pi:
+            angle += 2 * np.pi
+        return angle
+
+    def go_to_pose(self, target_pose: Pose) -> bool:
+        if self.curr_pose is None:
+            self.logger.warning("Current pose is unknown, cannot navigate")
+            return
+
+        dx = target_pose.position.x - self.curr_pose.position.x
+        dy = target_pose.position.y - self.curr_pose.position.y
+        distance = np.sqrt(dx**2 + dy**2)
+        angle_to_target = np.arctan2(dy, dx)
+        current_yaw = self.yaw_from_quaternion(self.curr_pose.orientation)
+        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
+        desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
+
+        cmd = Twist()
+        p = 0.5
+
+        if abs(angle_diff) > 0.1 and distance > 0.15:
+            cmd.angular.z = p * angle_diff
+        else:
+            if distance > 0.1:
+                cmd.linear.x = p * distance
+            else:
+                if abs(desired_yaw_diff) > 0.1:
+                    cmd.angular.z = p * desired_yaw_diff
+                else:
+                    return True
+
+        self.vel_pub.publish(cmd)
+        return False
+
+    @property
+    def curr_pose(self):
+        if hasattr(self, "pose") and self.pose is not None:
+            return self.pose
+        elif hasattr(self, "odom") and self.odom is not None:
+            return self.odom.pose.pose
+        else:
+            self.logger.warning("No pose information available")
+            return None
 
 
 def main():
