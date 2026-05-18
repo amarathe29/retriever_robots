@@ -6,7 +6,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             Node(
-                package="retrievers",
+                package="retriever_robots",
                 executable="retrieve_node",
                 name="retrieve_node",
                 namespace="rename_when_launching",
@@ -27,8 +27,7 @@ def generate_launch_description():
                         "tf_prefix": "rename_when_launching",
                     }
                 ],
-                arguments=['--ros-args', '--log-level', 'warn'],
-
+                arguments=["--ros-args", "--log-level", "warn"],
             ),
             Node(
                 package="realsense2_camera",
@@ -45,7 +44,7 @@ def generate_launch_description():
                         "rgb_camera.profile": "640x480x30",
                     }
                 ],
-                arguments=['--ros-args', '--log-level', 'warn'],
+                arguments=["--ros-args", "--log-level", "warn"],
             ),
         ]
     )
