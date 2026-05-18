@@ -8,11 +8,12 @@ from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
 import message_filters
 
-from cv_bridge import CvBridge 
+from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from enum import Enum
 import math
+
 
 class StateMachine(Enum):
     IDLE = 0
@@ -22,6 +23,7 @@ class StateMachine(Enum):
     STOCKPILING = 4
     RETURNING = 5
     RECOVERY = 6
+
 
 def euler_from_quaternion(x, y, z, w):
     """
@@ -57,9 +59,8 @@ def quaternion_from_euler(roll, pitch, yaw):
     q[1] = cy * cp * sr - sy * sp * cr  # x
     q[2] = cy * sp * cr + sy * cp * sr  # y
     q[3] = sy * cp * cr - cy * sp * sr  # z
-    
-    return q
 
+    return q
 
 
 class RetrieveNode(Node):
@@ -100,15 +101,16 @@ class RetrieveNode(Node):
 
         self.ts.registerCallback(self.cam_callback)
 
-
         # Set up publisher
-        self.vel_pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
+        self.vel_pub = self.create_publisher(
+            Twist, f"{self.get_namespace()}/cmd_vel", 10
+        )
 
         # Set up action server
         self.retrieve_action = ActionServer(
             self,
             GoToBlock,
-            f"{self.get_namespace()}/get_block",
+            f"{self.get_namespace()}/gotoblock",
             self.retrieve_callback,
         )
 
@@ -177,10 +179,7 @@ class RetrieveNode(Node):
             height, width = gray.shape
         except Exception as e:
             self.logger.error(f"unable to get height and width from grayscale image")
-        corners, ids, rejected = self.detector.detectMarkers(gray)
-
-        frame_center_y = height // 2
-        frame_center_x = width // 2
+        corners, ids, _ = self.detector.detectMarkers(gray)
 
         if ids is not None:
 
@@ -257,9 +256,7 @@ class RetrieveNode(Node):
                 roll = 0.0  # Robot can't roll
                 pitch = 0.0  # Robot can't pitch, it's only a batter
 
-                quaternion = quaternion_from_euler(
-                    roll, pitch, angle
-                )
+                quaternion = quaternion_from_euler(roll, pitch, angle)
 
                 self.grab_pose.position.x = self.odom.pose.pose.position.x
                 self.grab_pose.position.y = distance * np.tan(angle)
@@ -271,13 +268,12 @@ class RetrieveNode(Node):
                 self.grab_pose.orientation.w = quaternion[3]
             # =============================================================
 
-
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
 
         feedback_msg = GoToBlock.Feedback()
         feedback_msg.block_captured = False
-        
+
         if self.state == StateMachine.IDLE:
             self.request_pose = goal_handle.request.goal_pose
             self.state = StateMachine.NAVIGATING
@@ -295,7 +291,7 @@ class RetrieveNode(Node):
         elif self.state == StateMachine.FIND_POSE:
             if self.grab_pose is not None:
                 self.state = StateMachine.GRABBING
-            
+
         elif self.state == StateMachine.GRABBING:
             reached = self.go_to_pose(self.grab_pose)
             if reached:
@@ -314,7 +310,6 @@ class RetrieveNode(Node):
                 self.state = StateMachine.RECOVERY
             pass
 
-
         # This state is just if we want the robot to return to the starting position
         elif self.state == StateMachine.RETURNING:
             if self._start_pose is not None:
@@ -326,7 +321,7 @@ class RetrieveNode(Node):
                     result.end_pose = self.curr_pose
                     self.state = StateMachine.IDLE
                     return result
-                    
+
         elif self.state == StateMachine.RECOVERY:
             # TODO: Add some kind of recovery behavior
             pass
@@ -356,7 +351,7 @@ class RetrieveNode(Node):
         desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
 
         cmd = Twist()
-        p = 0.5 # Arbitrary gain cause why not
+        p = 0.5  # Arbitrary gain cause why not
 
         if abs(angle_diff) > 0.1 and distance > 0.15:
             cmd.angular.z = p * angle_diff
@@ -381,6 +376,7 @@ class RetrieveNode(Node):
         else:
             self.logger.warning("No pose information available")
             return None
+
 
 def main():
     rclpy.init()
