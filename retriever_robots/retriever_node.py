@@ -17,10 +17,11 @@ import math
 class StateMachine(Enum):
     IDLE = 0
     NAVIGATING = 1
-    GRABBING = 2
-    RETURNING = 3
-    FIND_POSE = 4
-    RECOVERY = 5
+    FIND_POSE = 2
+    GRABBING = 3
+    STOCKPILING = 4
+    RETURNING = 5
+    RECOVERY = 6
 
 def euler_from_quaternion(x, y, z, w):
     """
@@ -292,17 +293,26 @@ class RetrieveNode(Node):
                     f"Reached block pose, entering Find Pose state to orient around block"
                 )
         elif self.state == StateMachine.FIND_POSE:
+            if self.grab_pose is not None:
+                self.state = StateMachine.GRABBING
+            
+        elif self.state == StateMachine.GRABBING:
             reached = self.go_to_pose(self.grab_pose)
             if reached:
-                self.state = StateMachine.GRABBING
                 self.logger.info(
                     f"Reached grab pose, entering Grabbing state to attempt to grab block"
                 )
-        elif self.state == StateMachine.GRABBING:
-            # TODO: This should be changed to be the output of a function from the camera
-            feedback_msg.block_captured = True
+                self.state = StateMachine.STOCKPILING
 
-            self.state = StateMachine.RETURNING
+        elif self.state == StateMachine.STOCKPILING:
+            # TODO: This should be changed to be the output of some function from the camera also add functionality
+            feedback_msg.block_captured = True
+            reached = True
+            if feedback_msg.block_captured and reached:
+                self.state = StateMachine.RETURNING
+            elif not feedback_msg.block_captured:
+                self.state = StateMachine.RECOVERY
+            pass
 
 
         # This state is just if we want the robot to return to the starting position
@@ -316,6 +326,10 @@ class RetrieveNode(Node):
                     result.end_pose = self.curr_pose
                     self.state = StateMachine.IDLE
                     return result
+                    
+        elif self.state == StateMachine.RECOVERY:
+            # TODO: Add some kind of recovery behavior
+            pass
 
         feedback_msg.curr_pose = self.curr_pose
         goal_handle.publish_feedback(feedback_msg)
