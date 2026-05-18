@@ -326,6 +326,11 @@ class RetrieveNode(Node):
         feedback_msg.curr_pose = self.curr_pose
         goal_handle.publish_feedback(feedback_msg)
 
+        result = GoToBlock.Result()
+        result.success = False
+        result.end_pose = self.curr_pose
+        return result
+
     def angle_wrap(self, angle: float) -> float:
         while angle > np.pi:
             angle -= 2 * np.pi
