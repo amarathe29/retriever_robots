@@ -181,9 +181,7 @@ class RetrieveNode(Node):
         except Exception as e:
             self.logger.error(f"unable to get height and width from grayscale image")
         corners, ids, _ = cv2.aruco.detectMarkers(
-            gray, 
-            self.aruco_dict, 
-            parameters=self.aruco_parameters
+            gray, self.aruco_dict, parameters=self.aruco_parameters
         )
         if ids is not None:
 
@@ -270,7 +268,7 @@ class RetrieveNode(Node):
         feedback_msg = GoToBlock.Feedback()
         feedback_msg.block_captured = False
 
-        goal_reached= False
+        goal_reached = False
 
         while not goal_reached:
 
@@ -360,7 +358,7 @@ class RetrieveNode(Node):
         desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
 
         cmd = Twist()
-        p = 0.5  # Arbitrary gain cause why not
+        p = 0.1  # Arbitrary gain cause why not
 
         if abs(angle_diff) > 0.1 and distance > 0.15:
             cmd.angular.z = p * angle_diff
