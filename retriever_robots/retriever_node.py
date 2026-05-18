@@ -281,6 +281,10 @@ class RetrieveNode(Node):
 
             elif self.state == StateMachine.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
+                self.logger.warn(
+                    f"Current pose: {self.curr_pose}, Target pose: {self.request_pose}"
+                )
+                self.logger.warn(f"Reached: {reached}")
                 if reached:
                     self.state = StateMachine.FIND_BLOCK_POSE
                     self.logger.info(
