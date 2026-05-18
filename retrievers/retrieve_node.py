@@ -8,12 +8,11 @@ from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
 import message_filters
 
-from cv_bridge import CvBridge, CvBridgeError
+from cv_bridge import CvBridge 
 import cv2
 import numpy as np
-import tf_transformations
 from enum import Enum
-
+import math
 
 class StateMachine(Enum):
     IDLE = 0
@@ -23,18 +22,56 @@ class StateMachine(Enum):
     FIND_POSE = 4
     RECOVERY = 5
 
+def euler_from_quaternion(w, x, y, z):
+    """
+    Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
+    in radians. Sequence: ZYX (Yaw, Pitch, Roll).
+    """
+    t0 = 2.0 * (w * x + y * z)
+    t1 = 1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(t0, t1)
+
+    t2 = 2.0 * (w * y - z * x)
+    t2 = 1.0 if t2 > 1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.asin(t2)
+
+    t3 = 2.0 * (w * z + x * y)
+    t4 = 1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(t3, t4)
+
+    return roll, pitch, yaw
+
+
+def quaternion_from_euler(roll, pitch, yaw):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    q = [0.0, 0.0, 0.0, 0.0]
+    q[0] = cy * cp * cr + sy * sp * sr  # w
+    q[1] = cy * cp * sr - sy * sp * cr  # x
+    q[2] = cy * sp * cr + sy * cp * sr  # y
+    q[3] = sy * cp * cr - cy * sp * sr  # z
+    
+    return q
+
+
 
 class RetrieveNode(Node):
     """docstring for RetrieveNode."""
 
-    def __init__(self, arg):
-        super(RetrieveNode, self).__init__()
+    def __init__(self, node_name, *args):
+        super(RetrieveNode, self).__init__(node_name)
         # Set up subscribers
-        self.bev_pose_sub = self.subscriber(
-            f"{self.get_namespace()}/pose", Pose, self.pose_callback
+        self.bev_pose_sub = self.create_subscription(
+            Pose, f"{self.get_namespace()}/pose", self.pose_callback, 10
         )
-        self.odom_sub = self.subscriber(
-            f"{self.get_namespace()}/odom", Odometry, self.odom_callback
+        self.odom_sub = self.create_subscription(
+            Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
 
         # Set up synchronizer for color and depth images
@@ -68,7 +105,7 @@ class RetrieveNode(Node):
         # )
 
         # Set up publisher
-        self.vel_pub = self.publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
+        self.vel_pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
 
         # Set up action server
         self.retrieve_action = ActionServer(
@@ -135,7 +172,7 @@ class RetrieveNode(Node):
         try:
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
             depth = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding="gray")
-        except CvBridgeError as e:
+        except Exception as e:
             self.logger.error(f"Error: {e}")
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -215,7 +252,7 @@ class RetrieveNode(Node):
                 roll = 0.0  # Robot can't roll
                 pitch = 0.0  # Robot can't pitch, it's only a batter
 
-                quaternion = tf_transformations.quaternion_from_euler(
+                quaternion = quaternion_from_euler(
                     roll, pitch, angle
                 )
 
@@ -235,7 +272,7 @@ class RetrieveNode(Node):
             self.request_pose = goal_handle.request.goal_pose
             self.state = StateMachine.NAVIGATING
             self.logger.info(
-                f"Received retrieve action goal: {self.request}, entering Navigation state"
+                f"Received retrieve action goal: {self.request_pose}, entering Navigation state"
             )
 
         if self.state == StateMachine.NAVIGATING:
@@ -253,11 +290,11 @@ class RetrieveNode(Node):
                     f"Reached grab pose, entering Grabbing state to attempt to grab block"
                 )
 
-    def yaw_from_quaternion(q: Quaternion) -> float:
-        _, _, yaw = tf_transformations.euler_from_quaternion([q.x, q.y, q.z, q.w])
+    def yaw_from_quaternion(self, q: Quaternion) -> float:
+        _, _, yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
         return np.float64(yaw)
 
-    def angle_wrap(angle: float) -> float:
+    def angle_wrap(self, angle: float) -> float:
         while angle > np.pi:
             angle -= 2 * np.pi
         while angle < -np.pi:
@@ -306,7 +343,8 @@ class RetrieveNode(Node):
 
 
 def main():
-    node = RetrieveNode()
+    rclpy.init()
+    node = RetrieveNode("retriever_node")
     # I'll try spinning, that's a good trick!
     rclpy.spin(node)
     rclpy.shutdown()
