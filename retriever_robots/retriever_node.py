@@ -22,7 +22,7 @@ class StateMachine(Enum):
     FIND_POSE = 4
     RECOVERY = 5
 
-def euler_from_quaternion(w, x, y, z):
+def euler_from_quaternion(x, y, z, w):
     """
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: ZYX (Yaw, Pitch, Roll).
@@ -75,18 +75,19 @@ class RetrieveNode(Node):
         )
 
         # Set up synchronizer for color and depth images
+        # TODO: Double-check these topics
         self.color_sub = message_filters.Subscriber(
-            self, Image, f"{self.get_namespace()}/camera/color/image_raw"
+            self, Image, f"{self.get_namespace()}/realsense2_camera/color/image_raw"
         )
         self.depth_sub = message_filters.Subscriber(
             self,
             Image,
-            f"{self.get_namespace()}/camera/depth/image_raw",
+            f"{self.get_namespace()}/realsense2_camera/depth/image_raw",
         )
         self.depth_info = message_filters.Subscriber(
             self,
             CameraInfo,
-            f"{self.get_namespace()}/camera/depth/camera_info",
+            f"{self.get_namespace()}/realsense2_camera/depth/camera_info",
         )
 
         queue_size = 10
@@ -148,7 +149,7 @@ class RetrieveNode(Node):
 
     def cam_callback(
         self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
-    ) -> Pose:
+    ) -> None:
         if self.state == StateMachine.IDLE:
             self.grab_pose = Pose()
             self.marker_location = None
@@ -168,10 +169,13 @@ class RetrieveNode(Node):
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
             depth = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding="gray")
         except Exception as e:
-            self.logger.error(f"Error: {e}")
+            self.logger.error(f"Error in deconding images from camera: {e}")
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        height, width, _ = gray.shape
+        try:
+            height, width = gray.shape
+        except Exception as e:
+            self.logger.error(f"unable to get height and width from grayscale image")
         corners, ids, rejected = self.detector.detectMarkers(gray)
 
         frame_center_y = height // 2
@@ -183,6 +187,8 @@ class RetrieveNode(Node):
             marker_corners = corners[0][0]
             self.logger.info(f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}")
 
+            # TODO: These can be made irrelevant using the same estimatePoseSingleMarkers function listed below
+            # =============================================================
             bot_l = marker_corners[3]
             bot_r = marker_corners[2]
             top_r = marker_corners[1]
@@ -190,6 +196,7 @@ class RetrieveNode(Node):
 
             marker_center_top = ((top_l[0] + top_r[0]) // 2, (top_l[1] + top_r[1]) // 2)
             marker_center_bot = ((bot_l[0] + bot_r[0]) // 2, (bot_l[1] + bot_r[1]) // 2)
+            # =============================================================
 
             marker_center_x = int(
                 (
@@ -218,6 +225,8 @@ class RetrieveNode(Node):
             ):
                 self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
+            # TODO: There's a way to do this using a rotation and transformation vector from cv2.aruco.estimatePoseSingleMarkers(corners, self.marker_size, self.camera_matrix, self.distortion_coeffs)
+            # =============================================================
             if self.state == StateMachine.FIND_POSE:
 
                 if depth_msg.encoding == "32FC1":
@@ -251,7 +260,7 @@ class RetrieveNode(Node):
                     roll, pitch, angle
                 )
 
-                self.grab_pose.position.x = self.odom.pose.position.x
+                self.grab_pose.position.x = self.odom.pose.pose.position.x
                 self.grab_pose.position.y = distance * np.tan(angle)
                 self.grab_pose.position.z = 0.0  # Robot is ground vehicle
 
@@ -259,8 +268,10 @@ class RetrieveNode(Node):
                 self.grab_pose.orientation.y = quaternion[1]
                 self.grab_pose.orientation.z = quaternion[2]
                 self.grab_pose.orientation.w = quaternion[3]
+            # =============================================================
 
-    def retrieve_callback(self, goal_handle):
+
+    def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
 
         feedback_msg = GoToBlock.Feedback()
@@ -273,27 +284,29 @@ class RetrieveNode(Node):
                 f"Received retrieve action goal: {self.request_pose}, entering Navigation state"
             )
 
-        if self.state == StateMachine.NAVIGATING:
+        elif self.state == StateMachine.NAVIGATING:
             reached = self.go_to_pose(self.request_pose)
             if reached:
                 self.state = StateMachine.FIND_POSE
                 self.logger.info(
                     f"Reached block pose, entering Find Pose state to orient around block"
                 )
-        if self.state == StateMachine.FIND_POSE:
+        elif self.state == StateMachine.FIND_POSE:
             reached = self.go_to_pose(self.grab_pose)
             if reached:
                 self.state = StateMachine.GRABBING
                 self.logger.info(
                     f"Reached grab pose, entering Grabbing state to attempt to grab block"
                 )
-        if self.state == StateMachine.GRABBING:
+        elif self.state == StateMachine.GRABBING:
             # TODO: This should be changed to be the output of a function from the camera
             feedback_msg.block_captured = True
 
+            self.state = StateMachine.RETURNING
+
 
         # This state is just if we want the robot to return to the starting position
-        if self.state == StateMachine.RETURNING:
+        elif self.state == StateMachine.RETURNING:
             if self._start_pose is not None:
                 reached = self.go_to_pose(self._start_pose)
                 if reached:
@@ -301,7 +314,7 @@ class RetrieveNode(Node):
                     result = GoToBlock.Result()
                     result.success = True
                     result.end_pose = self.curr_pose
-                    self.state == StateMachine.IDLE
+                    self.state = StateMachine.IDLE
                     return result
 
         feedback_msg.curr_pose = self.curr_pose
