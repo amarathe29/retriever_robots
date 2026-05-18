@@ -116,10 +116,10 @@ class RetrieveNode(Node):
         )
 
         # AprilTag recognition stuff
-        ARUCO_DICT = cv2.aruco.DICT_APRILTAG_25h9
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        ARUCO_TAG = cv2.aruco.DICT_APRILTAG_25h9
+        self.aruco_dict = cv2.aruco.Dictionary_get(ARUCO_TAG)
+        self.aruco_parameters = cv2.aruco.DetectorParameters_create()
+
         self.bridge = CvBridge()
         self.camera_matrix = None
         self.distortion_coeffs = None
@@ -180,8 +180,11 @@ class RetrieveNode(Node):
             height, width = gray.shape
         except Exception as e:
             self.logger.error(f"unable to get height and width from grayscale image")
-        corners, ids, _ = self.detector.detectMarkers(gray)
-
+        corners, ids, _ = cv2.aruco.detectMarkers(
+            gray, 
+            self.aruco_dict, 
+            parameters=self.aruco_parameters
+        )
         if ids is not None:
 
             self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
