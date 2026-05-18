@@ -7,8 +7,8 @@ def generate_launch_description():
         [
             Node(
                 package="retriever_robots",
-                executable="retrieve_node",
-                name="retrieve_node",
+                executable="retriever_node",
+                name="retriever_node",
                 namespace="rename_when_launching",
                 output="screen",
             ),
