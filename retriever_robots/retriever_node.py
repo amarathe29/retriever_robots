@@ -188,17 +188,6 @@ class RetrieveNode(Node):
             marker_corners = corners[0][0]
             self.logger.info(f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}")
 
-            # TODO: These can be made irrelevant using the same estimatePoseSingleMarkers function listed below
-            # =============================================================
-            bot_l = marker_corners[3]
-            bot_r = marker_corners[2]
-            top_r = marker_corners[1]
-            top_l = marker_corners[0]
-
-            marker_center_top = ((top_l[0] + top_r[0]) // 2, (top_l[1] + top_r[1]) // 2)
-            marker_center_bot = ((bot_l[0] + bot_r[0]) // 2, (bot_l[1] + bot_r[1]) // 2)
-            # =============================================================
-
             marker_center_x = int(
                 (
                     marker_corners[0][0]
@@ -226,8 +215,6 @@ class RetrieveNode(Node):
             ):
                 self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
-            # TODO: There's a way to do this using a rotation and transformation vector from cv2.aruco.estimatePoseSingleMarkers(corners, self.marker_size, self.camera_matrix, self.distortion_coeffs)
-            # =============================================================
             if self.state == StateMachine.FIND_BLOCK_POSE:
 
                 if depth_msg.encoding == "32FC1":
@@ -239,35 +226,40 @@ class RetrieveNode(Node):
                         f"Unsupported encoding: {depth_msg.encoding}"
                     )
                     return
-                closer = (
-                    marker_center_top
-                    if marker_center_top[1] > marker_center_bot[1]
-                    else marker_center_bot
-                )
-                further = (
-                    marker_center_bot
-                    if closer == marker_center_top
-                    else marker_center_top
+
+                tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    marker_corners,
+                    self.marker_size,
+                    self.camera_matrix,
+                    self.distortion_coeffs,
                 )
 
-                dy = further[1] - closer[1]
-                dx = further[0] - closer[0]
+                R, _ = cv2.Rodrigues(rvec[0])
+                cam_x, cam_y, cam_z = tvec[0][0]
 
-                angle = np.arctan2(dy, dx)
-                roll = 0.0  # Robot can't roll
-                pitch = 0.0  # Robot can't pitch, it's only a batter
+                marker_y_cam = R[:, 1]
 
-                quaternion = quaternion_from_euler(roll, pitch, angle)
+                approach_direction = (
+                    -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
+                )
 
-                self.grab_pose.position.x = self.odom.pose.pose.position.x
-                self.grab_pose.position.y = distance * np.tan(angle)
-                self.grab_pose.position.z = 0.0  # Robot is ground vehicle
+                cam_x += approach_direction[0] * distance
+                cam_z += approach_direction[2] * distance
 
-                self.grab_pose.orientation.x = quaternion[0]
-                self.grab_pose.orientation.y = quaternion[1]
-                self.grab_pose.orientation.z = quaternion[2]
-                self.grab_pose.orientation.w = quaternion[3]
-            # =============================================================
+                dx = cam_z
+                dy = -cam_x
+
+                self.grab_pose.position.x = self.odom.pose.pose.position.x + dx
+                self.grab_pose.position.y = self.odom.pose.pose.position.y + dy
+                self.grab_pose.position.z = 0.0
+
+                yaw = np.arctan2(-approach_direction[0], approach_direction[2])
+                quaternion = quaternion_from_euler(0.0, 0.0, yaw)
+
+                self.grab_pose.orientation.w = quaternion[0]
+                self.grab_pose.orientation.x = quaternion[1]
+                self.grab_pose.orientation.y = quaternion[2]
+                self.grab_pose.orientation.z = quaternion[3]
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
