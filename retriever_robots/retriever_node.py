@@ -16,13 +16,14 @@ import math
 
 
 class StateMachine(Enum):
-    IDLE = 0
-    NAVIGATING = 1
-    FIND_POSE = 2
-    GRABBING = 3
-    STOCKPILING = 4
-    RETURNING = 5
-    RECOVERY = 6
+    IDLE = Enum.auto()
+    NAVIGATING = Enum.auto()
+    FIND_BLOCK_POSE = Enum.auto()
+    REACH_BLOCK = Enum.auto()
+    GRABBING = Enum.auto()
+    STOCKPILING = Enum.auto()
+    RETURNING = Enum.auto()
+    RECOVERY = Enum.auto()
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -220,14 +221,14 @@ class RetrieveNode(Node):
             # Find distance to block center
             depth_val = depth[marker_center_y, marker_center_x]
             if (
-                self.state == StateMachine.GRABBING
+                self.state == StateMachine.REACH_BLOCK
                 or self.state == StateMachine.RETURNING
             ):
                 self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
             # TODO: There's a way to do this using a rotation and transformation vector from cv2.aruco.estimatePoseSingleMarkers(corners, self.marker_size, self.camera_matrix, self.distortion_coeffs)
             # =============================================================
-            if self.state == StateMachine.FIND_POSE:
+            if self.state == StateMachine.FIND_BLOCK_POSE:
 
                 if depth_msg.encoding == "32FC1":
                     distance = float(depth_val)
@@ -284,21 +285,25 @@ class RetrieveNode(Node):
         elif self.state == StateMachine.NAVIGATING:
             reached = self.go_to_pose(self.request_pose)
             if reached:
-                self.state = StateMachine.FIND_POSE
+                self.state = StateMachine.FIND_BLOCK_POSE
                 self.logger.info(
                     f"Reached block pose, entering Find Pose state to orient around block"
                 )
-        elif self.state == StateMachine.FIND_POSE:
+        elif self.state == StateMachine.FIND_BLOCK_POSE:
             if self.grab_pose is not None:
-                self.state = StateMachine.GRABBING
+                self.state = StateMachine.REACH_BLOCK
 
-        elif self.state == StateMachine.GRABBING:
+        elif self.state == StateMachine.REACH_BLOCK:
             reached = self.go_to_pose(self.grab_pose)
             if reached:
                 self.logger.info(
                     f"Reached grab pose, entering Grabbing state to attempt to grab block"
                 )
-                self.state = StateMachine.STOCKPILING
+                self.state = StateMachine.GRABBING
+
+        elif self.state == StateMachine.GRABBING:
+            # TODO: This should approach and capture the block
+            self.state = StateMachine.STOCKPILING
 
         elif self.state == StateMachine.STOCKPILING:
             # TODO: This should be changed to be the output of some function from the camera also add functionality
