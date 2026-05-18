@@ -11,19 +11,19 @@ import message_filters
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-from enum import Enum
+from enum import Enum, auto
 import math
 
 
 class StateMachine(Enum):
-    IDLE = Enum.auto()
-    NAVIGATING = Enum.auto()
-    FIND_BLOCK_POSE = Enum.auto()
-    REACH_BLOCK = Enum.auto()
-    GRABBING = Enum.auto()
-    STOCKPILING = Enum.auto()
-    RETURNING = Enum.auto()
-    RECOVERY = Enum.auto()
+    IDLE = auto()
+    NAVIGATING = auto()
+    FIND_BLOCK_POSE = auto()
+    REACH_BLOCK = auto()
+    GRABBING = auto()
+    STOCKPILING = auto()
+    RETURNING = auto()
+    RECOVERY = auto()
 
 
 def euler_from_quaternion(x, y, z, w):
