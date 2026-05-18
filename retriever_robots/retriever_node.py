@@ -270,64 +270,68 @@ class RetrieveNode(Node):
         feedback_msg = GoToBlock.Feedback()
         feedback_msg.block_captured = False
 
-        if self.state == StateMachine.IDLE:
-            self.request_pose = goal_handle.request.goal_pose
-            self.state = StateMachine.NAVIGATING
-            self.logger.info(
-                f"Received retrieve action goal: {self.request_pose}, entering Navigation state"
-            )
+        goal_reached= False
 
-        elif self.state == StateMachine.NAVIGATING:
-            reached = self.go_to_pose(self.request_pose)
-            if reached:
-                self.state = StateMachine.FIND_BLOCK_POSE
+        while not goal_reached:
+
+            if self.state == StateMachine.IDLE:
+                self.request_pose = goal_handle.request.goal_pose
+                self.state = StateMachine.NAVIGATING
                 self.logger.info(
-                    f"Reached block pose, entering Find Pose state to orient around block"
+                    f"Received retrieve action goal: {self.request_pose}, entering Navigation state"
                 )
-        elif self.state == StateMachine.FIND_BLOCK_POSE:
-            if self.grab_pose is not None:
-                self.state = StateMachine.REACH_BLOCK
 
-        elif self.state == StateMachine.REACH_BLOCK:
-            reached = self.go_to_pose(self.grab_pose)
-            if reached:
-                self.logger.info(
-                    f"Reached grab pose, entering Grabbing state to attempt to grab block"
-                )
-                self.state = StateMachine.GRABBING
-
-        elif self.state == StateMachine.GRABBING:
-            # TODO: This should approach and capture the block
-            self.state = StateMachine.STOCKPILING
-
-        elif self.state == StateMachine.STOCKPILING:
-            # TODO: This should be changed to be the output of some function from the camera also add functionality
-            feedback_msg.block_captured = True
-            reached = True
-            if feedback_msg.block_captured and reached:
-                self.state = StateMachine.RETURNING
-            elif not feedback_msg.block_captured:
-                self.state = StateMachine.RECOVERY
-            pass
-
-        # This state is just if we want the robot to return to the starting position
-        elif self.state == StateMachine.RETURNING:
-            if self._start_pose is not None:
-                reached = self.go_to_pose(self._start_pose)
+            elif self.state == StateMachine.NAVIGATING:
+                reached = self.go_to_pose(self.request_pose)
                 if reached:
-                    goal_handle.succeed()
-                    result = GoToBlock.Result()
-                    result.success = True
-                    result.end_pose = self.curr_pose
-                    self.state = StateMachine.IDLE
-                    return result
+                    self.state = StateMachine.FIND_BLOCK_POSE
+                    self.logger.info(
+                        f"Reached block pose, entering Find Pose state to orient around block"
+                    )
+            elif self.state == StateMachine.FIND_BLOCK_POSE:
+                if self.grab_pose is not None:
+                    self.state = StateMachine.REACH_BLOCK
 
-        elif self.state == StateMachine.RECOVERY:
-            # TODO: Add some kind of recovery behavior
-            pass
+            elif self.state == StateMachine.REACH_BLOCK:
+                reached = self.go_to_pose(self.grab_pose)
+                if reached:
+                    self.logger.info(
+                        f"Reached grab pose, entering Grabbing state to attempt to grab block"
+                    )
+                    self.state = StateMachine.GRABBING
 
-        feedback_msg.curr_pose = self.curr_pose
-        goal_handle.publish_feedback(feedback_msg)
+            elif self.state == StateMachine.GRABBING:
+                # TODO: This should approach and capture the block
+                self.state = StateMachine.STOCKPILING
+
+            elif self.state == StateMachine.STOCKPILING:
+                # TODO: This should be changed to be the output of some function from the camera also add functionality
+                feedback_msg.block_captured = True
+                reached = True
+                if feedback_msg.block_captured and reached:
+                    self.state = StateMachine.RETURNING
+                elif not feedback_msg.block_captured:
+                    self.state = StateMachine.RECOVERY
+                pass
+
+            # This state is just if we want the robot to return to the starting position
+            elif self.state == StateMachine.RETURNING:
+                if self._start_pose is not None:
+                    goal_reached = self.go_to_pose(self._start_pose)
+                    if goal_reached:
+                        goal_handle.succeed()
+                        result = GoToBlock.Result()
+                        result.success = True
+                        result.end_pose = self.curr_pose
+                        self.state = StateMachine.IDLE
+                        return result
+
+            elif self.state == StateMachine.RECOVERY:
+                # TODO: Add some kind of recovery behavior
+                pass
+
+            feedback_msg.curr_pose = self.curr_pose
+            goal_handle.publish_feedback(feedback_msg)
 
         result = GoToBlock.Result()
         result.success = False
