@@ -88,17 +88,17 @@ class RetrieveNode(Node):
             Image,
             f"{self.get_namespace()}/camera/depth/image_rect_raw",
         )
-        self.depth_info = message_filters.Subscriber(
+        self.color_info = message_filters.Subscriber(
             self,
             CameraInfo,
-            f"{self.get_namespace()}/camera/depth/camera_info",
+            f"{self.get_namespace()}/camera/color/camera_info",
         )
 
         queue_size = 10
         slop = 0.5
 
         self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.color_sub, self.depth_sub, self.depth_info], queue_size, slop
+            [self.color_sub, self.depth_sub, self.color_info], queue_size, slop
         )
 
         self.ts.registerCallback(self.cam_callback)
@@ -153,16 +153,16 @@ class RetrieveNode(Node):
             self._start_pose = self.odom.pose.pose
 
     def cam_callback(
-        self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
+        self, color_msg: Image, depth_msg: Image, color_info: CameraInfo
     ) -> None:
 
         if (self.camera_matrix is None) or (self.distortion_coeffs is None):
             self.logger.warning("No camera info received yet, cannot process image")
             self.logger.info("Received camera info, saving camera matrix")
-            self.camera_matrix = np.array(depth_info.k, dtype=np.float64).reshape(
+            self.camera_matrix = np.array(color_info.k, dtype=np.float64).reshape(
                 (3, 3)
             )
-            self.distortion_coeffs = np.array(depth_info.d, dtype=np.float64)
+            self.distortion_coeffs = np.array(color_info.d, dtype=np.float64)
             self.logger.debug(f"Camera matrix: {self.camera_matrix}")
             return
 
