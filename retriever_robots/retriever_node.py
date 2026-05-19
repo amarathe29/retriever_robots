@@ -81,17 +81,17 @@ class RetrieveNode(Node):
         # Set up synchronizer for color and depth images
         # TODO: Double-check these topics
         self.color_sub = message_filters.Subscriber(
-            self, Image, f"{self.get_namespace()}/realsense2_camera_node/color/image_raw"
+            self, Image, f"{self.get_namespace()}/camera/color/image_raw"
         )
         self.depth_sub = message_filters.Subscriber(
             self,
             Image,
-            f"{self.get_namespace()}/realsense2_camera_node/depth/image_rect_raw",
+            f"{self.get_namespace()}/camera/depth/image_rect_raw",
         )
         self.depth_info = message_filters.Subscriber(
             self,
             CameraInfo,
-            f"{self.get_namespace()}/realsense2_camera_node/depth/camera_info",
+            f"{self.get_namespace()}/camera/depth/camera_info",
         )
 
         queue_size = 10
