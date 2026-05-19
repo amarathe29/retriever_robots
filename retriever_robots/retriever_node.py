@@ -213,12 +213,13 @@ class RetrieveNode(Node):
             depth_val = depth[marker_center_y, marker_center_x]
             if (
                 self.state == StateMachine.REACH_BLOCK
-                or self.state == StateMachine.RETURNING
+                or self.state == StateMachine.STOCKPILING
+                or self.state == StateMachine.GRABBING
             ):
                 self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
             if (self.state == StateMachine.FIND_BLOCK_POSE) and (
-                self.grab_pose is None
+                self.grab_pose == Pose()
             ):
 
                 self.logger.info(f"Searching for block")
