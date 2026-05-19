@@ -293,7 +293,7 @@ class RetrieveNode(Node):
                         f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
                     )
             elif self.state == StateMachine.FIND_BLOCK_POSE:
-                if self.grab_pose is not None:
+                if self.grab_pose != Pose() and self.grab_pose is not None:
                     self.logger.info(
                         f"Found block pose, entering REACH_BLOCK state to orient around block"
                     )
