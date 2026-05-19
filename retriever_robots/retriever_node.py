@@ -172,7 +172,7 @@ class RetrieveNode(Node):
 
         try:
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
-            depth = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding="gray")
+            depth = self.bridge.imgmsg_to_cv2(depth_msg)
         except Exception as e:
             self.logger.error(f"Error in deconding images from camera: {e}")
 
