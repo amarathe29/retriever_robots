@@ -166,7 +166,12 @@ class RetrieveNode(Node):
             self.logger.debug(f"Camera matrix: {self.camera_matrix}")
             return
 
-        if self.state not in [StateMachine.FIND_BLOCK_POSE, StateMachine.REACH_BLOCK, StateMachine.GRABBING, StateMachine.STOCKPILING]:
+        if self.state not in [
+            StateMachine.FIND_BLOCK_POSE,
+            StateMachine.REACH_BLOCK,
+            StateMachine.GRABBING,
+            StateMachine.STOCKPILING,
+        ]:
             self.grab_pose = Pose()
             self.marker_location = None
             return
@@ -189,7 +194,9 @@ class RetrieveNode(Node):
 
             self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
             marker_corners = corners[0][0]
-            self.logger.info(f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}")
+            self.logger.info(
+                f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}"
+            )
 
             marker_center_x = int(
                 (
@@ -240,10 +247,12 @@ class RetrieveNode(Node):
                     )
                     return
 
-                self.logger.error(f"All the intrinsics: {self.camera_matrix.shape}, {self.distortion_coeffs.shape}, {marker_corners.shape}")
+                self.logger.error(
+                    f"All the intrinsics: {self.camera_matrix.shape}, {self.distortion_coeffs.shape}, {marker_corners.shape}"
+                )
 
                 tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
-                    marker_corners,
+                    [marker_corners],
                     self.marker_size,
                     self.camera_matrix,
                     self.distortion_coeffs,
