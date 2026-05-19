@@ -22,7 +22,7 @@ class CheckTags(Node):
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
             self.get_logger().info("Received an image.")
             # use cv2 2.4.6 to find an aruco tag in the image
-            aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)
+            aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_APRILTAG_25h9)
             parameters = cv2.aruco.DetectorParameters_create()
             corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(cv_image, aruco_dict, parameters=parameters)
             if ids is not None:
