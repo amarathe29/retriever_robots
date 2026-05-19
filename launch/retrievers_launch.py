@@ -1,6 +1,16 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+from ament_index_python.packages import get_package_share_directory
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+import os
+
+included_package_dir = get_package_share_directory('realsense2_camera')
+    
+# 2. Construct the full path to the target launch file
+launch_file_path = os.path.join(included_package_dir, 'launch', 'rs_launch.py')
 
 def generate_launch_description():
     return LaunchDescription(
@@ -29,22 +39,26 @@ def generate_launch_description():
                 ],
                 arguments=["--ros-args", "--log-level", "warn"],
             ),
-            Node(
-                package="realsense2_camera",
-                executable="realsense2_camera_node",
-                name="realsense2_camera_node",
-                namespace="rename_when_launching",
-                output="screen",
-                parameters=[
-                    {
-                        "enable_pointcloud": False,
-                        "enable_sync": True,
-                        "align_depth": True,
-                        "depth_module.profile": "640x480x30",
-                        "rgb_camera.profile": "640x480x30",
-                    }
-                ],
-                arguments=["--ros-args", "--log-level", "warn"],
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(launch_file_path),
+                launch_arguments={'initial_reset': 'true'}.items(),
             ),
+            # Node(
+            #     package="realsense2_camera",
+            #     executable="realsense2_camera_node",
+            #     name="realsense2_camera_node",
+            #     namespace="rename_when_launching",
+            #     output="screen",
+            #     parameters=[
+            #         {
+            #             "enable_pointcloud": False,
+            #             "enable_sync": True,
+            #             "align_depth": True,
+            #             "depth_module.profile": "640x480x30",
+            #             "rgb_camera.profile": "640x480x30",
+            #         }
+            #     ],
+            #     arguments=["--ros-args", "--log-level", "warn"],
+            # ),
         ]
     )
