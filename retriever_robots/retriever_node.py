@@ -239,6 +239,9 @@ class RetrieveNode(Node):
                         f"Detected marker {marker_corners} does not have 4 corners, cannot estimate pose"
                     )
                     return
+
+                self.logger.error(f"All the intrinsics: {self.camera_matrix}, {self.distortion_coeffs}, {self.marker_size}")
+
                 tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
                     marker_corners,
                     self.marker_size,
