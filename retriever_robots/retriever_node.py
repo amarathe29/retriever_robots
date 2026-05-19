@@ -240,7 +240,7 @@ class RetrieveNode(Node):
                     )
                     return
 
-                self.logger.error(f"All the intrinsics: {self.camera_matrix}, {self.distortion_coeffs}, {self.marker_size}")
+                self.logger.error(f"All the intrinsics: {self.camera_matrix.shape}, {self.distortion_coeffs.shape}, {marker_corners.shape}")
 
                 tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
                     marker_corners,
