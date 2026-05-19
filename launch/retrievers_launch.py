@@ -41,7 +41,12 @@ def generate_launch_description():
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(launch_file_path),
-                launch_arguments={'initial_reset': 'true', 'camera_namespace': 'rename_when_launching'}.items(),
+                launch_arguments={
+                    'initial_reset': 'true', 
+                    'camera_namespace': 'rename_when_launching',
+                    'depth_module.depth_profile': '640x480x30',
+                    'rgb_camera.color_profile': '640x480x30',
+                    }.items(),
 
             ),
             # Node(
