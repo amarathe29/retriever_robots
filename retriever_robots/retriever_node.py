@@ -365,7 +365,7 @@ class RetrieveNode(Node):
 
         # for now, just pretend we went there
         self.logger.error(f"Gone to pose: {target_pose}")
-        return
+        return True
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
