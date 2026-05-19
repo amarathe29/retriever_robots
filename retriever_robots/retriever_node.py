@@ -155,6 +155,7 @@ class RetrieveNode(Node):
     def cam_callback(
         self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
     ) -> None:
+        self.logger.error("Enterred cam callback")
         if self.state == StateMachine.IDLE:
             self.grab_pose = Pose()
             self.marker_location = None
