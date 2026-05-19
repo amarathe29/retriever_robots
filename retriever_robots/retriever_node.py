@@ -155,7 +155,7 @@ class RetrieveNode(Node):
     def cam_callback(
         self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
     ) -> None:
-        if self.state == StateMachine.IDLE:
+        if self.state not in [StateMachine.FIND_BLOCK_POSE, StateMachine.REACH_BLOCK, StateMachine.GRABBING, StateMachine.STOCKPILING]:
             self.grab_pose = Pose()
             self.marker_location = None
             return
