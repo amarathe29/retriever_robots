@@ -217,8 +217,11 @@ class RetrieveNode(Node):
             ):
                 self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
-            if self.state == StateMachine.FIND_BLOCK_POSE:
+            if (self.state == StateMachine.FIND_BLOCK_POSE) and (
+                self.grab_pose is None
+            ):
 
+                self.logger.info(f"Searching for block")
                 if depth_msg.encoding == "32FC1":
                     distance = float(depth_val)
                 elif depth_msg.encoding == "16UC1":
@@ -262,6 +265,7 @@ class RetrieveNode(Node):
                 self.grab_pose.orientation.x = quaternion[1]
                 self.grab_pose.orientation.y = quaternion[2]
                 self.grab_pose.orientation.z = quaternion[3]
+                self.logger.info(f"Estimated grab pose: {self.grab_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
@@ -277,43 +281,51 @@ class RetrieveNode(Node):
                 self.request_pose = goal_handle.request.goal_pose
                 self.state = StateMachine.NAVIGATING
                 self.logger.info(
-                    f"Received retrieve action goal: {self.request_pose}, entering Navigation state"
+                    f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
                 )
 
             elif self.state == StateMachine.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
-                self.logger.warn(
-                    f"Current pose: {self.curr_pose}, Target pose: {self.request_pose}"
-                )
-                self.logger.warn(f"Reached: {reached}")
                 if reached:
                     self.state = StateMachine.FIND_BLOCK_POSE
                     self.logger.info(
-                        f"Reached block pose, entering Find Pose state to orient around block"
+                        f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
                     )
             elif self.state == StateMachine.FIND_BLOCK_POSE:
                 if self.grab_pose is not None:
+                    self.logger.info(
+                        f"Found block pose, entering REACH_BLOCK state to orient around block"
+                    )
                     self.state = StateMachine.REACH_BLOCK
 
             elif self.state == StateMachine.REACH_BLOCK:
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
-                        f"Reached grab pose, entering Grabbing state to attempt to grab block"
+                        f"Reached grab pose, entering GRABBING state to grab block"
                     )
                     self.state = StateMachine.GRABBING
 
             elif self.state == StateMachine.GRABBING:
                 # TODO: This should approach and capture the block
                 self.state = StateMachine.STOCKPILING
+                self.logger.info(
+                    f"Grabbed block, entering STOCKPILING state to stockpile block"
+                )
 
             elif self.state == StateMachine.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
                 feedback_msg.block_captured = True
                 reached = True
                 if feedback_msg.block_captured and reached:
+                    self.logger.info(
+                        f"Stockpiled block, entering RETURNING state to return to start"
+                    )
                     self.state = StateMachine.RETURNING
                 elif not feedback_msg.block_captured:
+                    self.logger.info(
+                        f"Failed to capture block, entering RECOVERY state to attempt recovery"
+                    )
                     self.state = StateMachine.RECOVERY
                 pass
 
@@ -363,7 +375,7 @@ class RetrieveNode(Node):
         desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
 
         cmd = Twist()
-        p = 0.1  # Arbitrary gain cause why not
+        p = 0.3  # Arbitrary gain cause why not
 
         if abs(angle_diff) > 0.1 and distance > 0.15:
             cmd.angular.z = p * angle_diff
@@ -382,10 +394,10 @@ class RetrieveNode(Node):
     @property
     def curr_pose(self):
         if hasattr(self, "pose") and self.pose is not None:
-            self.logger.warn("Using pose topic")
+            self.logger.debug("Using pose topic")
             return self.pose
         elif hasattr(self, "odom") and self.odom is not None:
-            self.logger.warn("Using odometry topic")
+            self.logger.debug("Using odometry topic")
             return self.odom.pose.pose
         else:
             self.logger.warning("No pose information available")
