@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
+from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, Quaternion
 from nav_msgs.msg import Odometry
@@ -381,8 +382,10 @@ class RetrieveNode(Node):
     @property
     def curr_pose(self):
         if hasattr(self, "pose") and self.pose is not None:
+            self.logger.warn("Using pose topic")
             return self.pose
         elif hasattr(self, "odom") and self.odom is not None:
+            self.logger.warn("Using odometry topic")
             return self.odom.pose.pose
         else:
             self.logger.warning("No pose information available")
@@ -393,7 +396,9 @@ def main():
     rclpy.init()
     node = RetrieveNode("retriever_node")
     # I'll try spinning, that's a good trick!
-    rclpy.spin(node)
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    executor.spin()
     rclpy.shutdown()
 
 
