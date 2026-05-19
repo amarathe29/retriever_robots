@@ -36,6 +36,9 @@ setup(
         ],
     },
     entry_points={
-        "console_scripts": ["retriever_node = retriever_robots.retriever_node:main"],
+        "console_scripts": [
+            "retriever_node = retriever_robots.retriever_node:main",
+            "check_tags = retriever_robots.check_tags:main",
+            ],
     },
 )
