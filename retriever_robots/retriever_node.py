@@ -155,10 +155,6 @@ class RetrieveNode(Node):
     def cam_callback(
         self, color_msg: Image, depth_msg: Image, depth_info: CameraInfo
     ) -> None:
-        if self.state not in [StateMachine.FIND_BLOCK_POSE, StateMachine.REACH_BLOCK, StateMachine.GRABBING, StateMachine.STOCKPILING]:
-            self.grab_pose = Pose()
-            self.marker_location = None
-            return
 
         if (self.camera_matrix is None) or (self.distortion_coeffs is None):
             self.logger.warning("No camera info received yet, cannot process image")
@@ -168,6 +164,11 @@ class RetrieveNode(Node):
             )
             self.distortion_coeffs = np.array(depth_info.d, dtype=np.float64)
             self.logger.debug(f"Camera matrix: {self.camera_matrix}")
+            return
+
+        if self.state not in [StateMachine.FIND_BLOCK_POSE, StateMachine.REACH_BLOCK, StateMachine.GRABBING, StateMachine.STOCKPILING]:
+            self.grab_pose = Pose()
+            self.marker_location = None
             return
 
         try:
@@ -188,7 +189,7 @@ class RetrieveNode(Node):
 
             self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
             marker_corners = corners[0][0]
-            self.logger.info(f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}")
+            self.logger.info(f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}")
 
             marker_center_x = int(
                 (
