@@ -210,7 +210,7 @@ class RetrieveNode(Node):
             )
 
             # Find distance to block center
-            depth_val = depth[marker_center_y, marker_center_x]
+            depth_val = depth[marker_center_x, marker_center_y]
             if (
                 self.state == StateMachine.REACH_BLOCK
                 or self.state == StateMachine.STOCKPILING
