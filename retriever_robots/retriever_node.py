@@ -362,6 +362,11 @@ class RetrieveNode(Node):
         return angle
 
     def go_to_pose(self, target_pose: Pose) -> bool:
+
+        # for now, just pretend we went there
+        self.logger.error(f"Gone to pose: {target_pose}")
+        return
+
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
