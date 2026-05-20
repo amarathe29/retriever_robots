@@ -18,7 +18,7 @@ ns = DeclareLaunchArgument(
                 'namespace',
                 default_value='rename_when_launching',
                 description='Namespace for the node'
-            ),
+            )
 namespace = LaunchConfiguration('namespace')
 
 def generate_launch_description():
