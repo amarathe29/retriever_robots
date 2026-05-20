@@ -257,6 +257,14 @@ class RetrieveNode(Node):
                 )
 
                 im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
+                # also put a circle around the camera intrinsics principal point
+                cv2.circle(
+                    im,
+                    (int(self.camera_matrix[0, 2]), int(self.camera_matrix[1, 2])),
+                    5,
+                    (0, 255, 0),
+                    -1,
+                )
                 cv2.imwrite("detected_markers.png", im)
 
                 tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
