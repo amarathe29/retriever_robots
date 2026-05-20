@@ -269,6 +269,8 @@ class RetrieveNode(Node):
                 cam_x += approach_direction[0] * distance
                 cam_z += approach_direction[2] * distance
 
+                self.logger.warn(f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})")
+
                 dx = cam_z
                 dy = -cam_x
 
