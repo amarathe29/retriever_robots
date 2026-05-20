@@ -222,7 +222,9 @@ class RetrieveNode(Node):
                 self.logger.warning(
                     f"Depth image shape {depth.shape} does not match color image shape {gray.shape}, resizing depth image"
                 )
-                depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_NEAREST)
+                depth = cv2.resize(
+                    depth, (width, height), interpolation=cv2.INTER_NEAREST
+                )
             depth_val = depth[marker_center_y, marker_center_x]
             if (
                 self.state == StateMachine.REACH_BLOCK
@@ -267,32 +269,52 @@ class RetrieveNode(Node):
                 )
                 cv2.imwrite("detected_markers.png", im)
 
-                tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
-                    [marker_corners],
-                    self.marker_size,
+                obj_pts = np.array(
+                    [
+                        [-self.marker_size / 2, self.marker_size / 2, 0.0],
+                        [self.marker_size / 2, self.marker_size / 2, 0.0],
+                        [self.marker_size / 2, -self.marker_size / 2, 0.0],
+                        [-self.marker_size / 2, -self.marker_size / 2, 0.0],
+                    ],
+                    dtype=np.float64,
+                )
+                ok, rvec, tvec = cv2.solvePnP(
+                    obj_pts,
+                    marker_corners,
                     self.camera_matrix,
                     self.distortion_coeffs,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE,
                 )
 
-                self.logger.info(f"Estimated pose of marker: rvec=\n{rvec}, tvec=\n{tvec}")
+                if ok:
+                    self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
+
+                # tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
+                #     [marker_corners],
+                #     self.marker_size,
+                #     self.camera_matrix,
+                #     self.distortion_coeffs,
+                # )
+
+                # self.logger.info(
+                #     f"Estimated pose of marker: rvec=\n{rvec}, tvec=\n{tvec}"
+                # )
 
                 R, _ = cv2.Rodrigues(rvec[0])
-                cam_x, cam_y, cam_z = tvec[0][0]
+                cam_x, cam_y, cam_z = tvec
 
-                marker_y_cam = R[:, 1]
+                # marker_y_cam = R[:, 1]
 
-                approach_direction = (
-                    -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
-                )
+                # approach_direction = (
+                #     -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
+                # )
 
                 # cam_x += approach_direction[0] * distance
                 # cam_z += approach_direction[2] * distance
 
-
-                mathematical_x = (marker_center_x - self.camera_matrix[0, 2]) * cam_z / self.camera_matrix[0, 0]
-                self.logger.warn(f"Naive x from camera frame: {mathematical_x} m")
-
-                self.logger.warn(f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})")
+                self.logger.warn(
+                    f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})"
+                )
 
                 dx = cam_z
                 dy = -cam_x
@@ -301,8 +323,9 @@ class RetrieveNode(Node):
                 self.grab_pose.position.y = self.odom.pose.pose.position.y + dy
                 self.grab_pose.position.z = 0.0
 
-                yaw = np.arctan2(-approach_direction[0], approach_direction[2])
-                quaternion = quaternion_from_euler(0.0, 0.0, yaw)
+                # yaw = np.arctan2(-approach_direction[0], approach_direction[2])
+                yaw = 0.0
+                quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
 
                 self.grab_pose.orientation.w = quaternion[0]
                 self.grab_pose.orientation.x = quaternion[1]
