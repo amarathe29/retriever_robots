@@ -247,41 +247,38 @@ class RetrieveNode(Node):
                     return
 
                 self.logger.error(
-                    f"All the intrinsics: {self.camera_matrix.shape}, {self.distortion_coeffs.shape}, {marker_corners.shape}"
+                    f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
                 )
 
-                # tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
-                #     [marker_corners],
-                #     self.marker_size,
-                #     self.camera_matrix,
-                #     self.distortion_coeffs,
-                # )
+                tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    [marker_corners],
+                    self.marker_size,
+                    self.camera_matrix,
+                    self.distortion_coeffs,
+                )
 
-                # R, _ = cv2.Rodrigues(rvec[0])
-                # cam_x, cam_y, cam_z = tvec[0][0]
+                R, _ = cv2.Rodrigues(rvec[0])
+                cam_x, cam_y, cam_z = tvec[0][0]
 
-                # marker_y_cam = R[:, 1]
+                marker_y_cam = R[:, 1]
 
-                # approach_direction = (
-                #     -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
-                # )
+                approach_direction = (
+                    -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
+                )
 
-                # cam_x += approach_direction[0] * distance
-                # cam_z += approach_direction[2] * distance
+                cam_x += approach_direction[0] * distance
+                cam_z += approach_direction[2] * distance
 
+                self.logger.warn(f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})")
 
-                robot_y = -self.camera_matrix[0,0]* marker_center_x + self.camera_matrix[0,2]
-
-                self.logger.warn(f"Block center is {distance} m away at relative robot coordinates ({distance}, {robot_y}, {'who cares'})")
-
-                dx = distance
-                dy = robot_y
+                dx = cam_z
+                dy = -cam_x
 
                 self.grab_pose.position.x = self.odom.pose.pose.position.x + dx
                 self.grab_pose.position.y = self.odom.pose.pose.position.y + dy
                 self.grab_pose.position.z = 0.0
 
-                yaw = 0#np.arctan2(-approach_direction[0], approach_direction[2])
+                yaw = np.arctan2(-approach_direction[0], approach_direction[2])
                 quaternion = quaternion_from_euler(0.0, 0.0, yaw)
 
                 self.grab_pose.orientation.w = quaternion[0]

@@ -14,7 +14,7 @@ class CheckTags(Node):
 
         self.create_subscription(
             Image,
-            "/camera/camera/color/image_raw",
+            "/asher/camera/color/image_raw",
             self.image_callback,)
 
     def image_callback(self, msg):
