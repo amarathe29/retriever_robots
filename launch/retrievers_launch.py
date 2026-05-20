@@ -54,10 +54,9 @@ def generate_launch_description():
                 launch_arguments={
                     'initial_reset': 'true', 
                     'camera_namespace': namespace,
-                    'depth_module.depth_profile': '640x480x30',
-                    'rgb_camera.color_profile': '640x480x30',
+                    'depth_module.depth_profile': '1280x720x30',
+                    'rgb_camera.color_profile': '1280x720x30',
                     'enable_sync': 'true',
-                    'align_depth': 'true',
                     }.items(),
 
             ),
