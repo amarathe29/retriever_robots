@@ -216,7 +216,13 @@ class RetrieveNode(Node):
                 // 4
             )
 
-            # Find distance to block center
+            # Find distance to block center,
+            # reshape depth image to be same size as color image if needed
+            if depth.shape != gray.shape:
+                self.logger.warning(
+                    f"Depth image shape {depth.shape} does not match color image shape {gray.shape}, resizing depth image"
+                )
+                depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_NEAREST)
             depth_val = depth[marker_center_x, marker_center_y]
             if (
                 self.state == StateMachine.REACH_BLOCK
@@ -259,6 +265,8 @@ class RetrieveNode(Node):
                     self.camera_matrix,
                     self.distortion_coeffs,
                 )
+
+                self.logger.info(f"Estimated pose of marker: rvec=\n{rvec}, tvec=\n{tvec}")
 
                 R, _ = cv2.Rodrigues(rvec[0])
                 cam_x, cam_y, cam_z = tvec[0][0]
