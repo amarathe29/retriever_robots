@@ -223,7 +223,7 @@ class RetrieveNode(Node):
                     f"Depth image shape {depth.shape} does not match color image shape {gray.shape}, resizing depth image"
                 )
                 depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_NEAREST)
-            depth_val = depth[marker_center_x, marker_center_y]
+            depth_val = depth[marker_center_y, marker_center_x]
             if (
                 self.state == StateMachine.REACH_BLOCK
                 or self.state == StateMachine.STOCKPILING
