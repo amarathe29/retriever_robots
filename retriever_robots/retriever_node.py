@@ -250,6 +250,9 @@ class RetrieveNode(Node):
                     f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
                 )
 
+                im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
+                cv2.imwrite("detected_markers.png", im)
+
                 tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
                     [marker_corners],
                     self.marker_size,
