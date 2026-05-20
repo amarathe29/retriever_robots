@@ -289,7 +289,8 @@ class RetrieveNode(Node):
                 # cam_z += approach_direction[2] * distance
 
 
-                # cam_x = (marker_center_x - self.camera_matrix[0, 2]) * distance / self.camera_matrix[0, 0]
+                mathematical_x = (marker_center_x - self.camera_matrix[0, 2]) * distance / self.camera_matrix[0, 0]
+                self.logger.warn(f"Naive x from camera frame: {mathematical_x} m")
 
                 self.logger.warn(f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})")
 
