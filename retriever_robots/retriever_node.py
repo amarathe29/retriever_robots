@@ -79,7 +79,6 @@ class RetrieveNode(Node):
         )
 
         # Set up synchronizer for color and depth images
-        # TODO: Double-check these topics
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
         )
