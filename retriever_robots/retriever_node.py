@@ -274,7 +274,7 @@ class RetrieveNode(Node):
                 cam_x, cam_y, cam_z = tvec
 
                 marker_y_cam = R[:, 1]
-
+                marker_y_cam[2] = 0.0
                 desired_dist = 0.1
                 # Approach direction is negative if... and positive if...
                 approach_direction = (
@@ -318,6 +318,13 @@ class RetrieveNode(Node):
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
+        if self.state != StateMachine.IDLE:
+            self.logger.error(f"Already running an action")
+            goal_handle.fail()
+            result = GoToBlock.Result()
+            result.success = True
+            result.end_pose = self.curr_pose
+            return
 
         feedback_msg = GoToBlock.Feedback()
         feedback_msg.block_captured = False
