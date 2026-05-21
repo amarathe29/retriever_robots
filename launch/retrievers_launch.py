@@ -31,6 +31,7 @@ def generate_launch_description():
                 name="retriever_node",
                 namespace=namespace,
                 output="screen",
+                arguments=["--ros-args", "--log-level", "debug"],
             ),
             Node(
                 package="rosaria2",
@@ -60,24 +61,7 @@ def generate_launch_description():
                     }.items(),
 
             ),
-            # Node(
-            #     package="realsense2_camera",
-            #     executable="realsense2_camera_node",
-            #     name="realsense2_camera_node",
-            #     namespace="rename_when_launching",
-            #     output="screen",
-            #     parameters=[
-            #         {
-            #             "enable_pointcloud": False,
-            #             "enable_sync": True,
-            #             "align_depth": True,
-            #             "depth_module.profile": "640x480x30",
-            #             "rgb_camera.profile": "640x480x30",
-            #         }
-            #     ],
-            #     arguments=["--ros-args", "--log-level", "warn"],
-            # ),
-
+           
             # ros2 action send_goal /rename_when_launching/gotoblock retriever_msgs/action/GoToBlock   "{goal_pose: {position: {x: 1.3, y: -0.2, z: 0.0}, orientation:{x: 0.0, y: 0.0, z: 0.0, w: 1.0}}, block_type: 1}"
         ]
     )
