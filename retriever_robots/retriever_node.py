@@ -218,7 +218,7 @@ class RetrieveNode(Node):
                 )
 
             if (self.state == StateMachine.FIND_BLOCK_POSE) and (
-                self.grab_pose == Pose()
+                self.grab_pose is None
             ):
 
                 self.logger.info(f"Searching for block")
@@ -324,7 +324,7 @@ class RetrieveNode(Node):
 
             if self.state == StateMachine.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
-                self.grab_pose = Pose()
+                self.grab_pose = None
                 self.marker_location = None
                 self.logger.info(
                     f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
@@ -339,7 +339,7 @@ class RetrieveNode(Node):
                     )
                     self.state = StateMachine.FIND_BLOCK_POSE
             elif self.state == StateMachine.FIND_BLOCK_POSE:
-                if self.grab_pose != Pose() and self.grab_pose is not None:
+                if self.grab_pose is not None:
                     self.logger.info(
                         f"Found block pose, entering REACH_BLOCK state to orient around block"
                     )
