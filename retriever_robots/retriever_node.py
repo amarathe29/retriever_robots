@@ -289,6 +289,7 @@ class RetrieveNode(Node):
                 if ok:
                     self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
                 else:
+                    self.logger.error(f"PnP Solver Failed: {ok}")
                     return
 
                 R, _ = cv2.Rodrigues(rvec)
