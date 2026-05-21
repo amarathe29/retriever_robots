@@ -287,30 +287,28 @@ class RetrieveNode(Node):
                 )
 
                 if ok:
-                    self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
+                    self.logger.debug(f"tvec:\n{tvec}\nrvec:\n{rvec}")
+                else:
+                    return
 
-                # tvec, rvec, _ = cv2.aruco.estimatePoseSingleMarkers(
-                #     [marker_corners],
-                #     self.marker_size,
-                #     self.camera_matrix,
-                #     self.distortion_coeffs,
-                # )
-
-                # self.logger.info(
-                #     f"Estimated pose of marker: rvec=\n{rvec}, tvec=\n{tvec}"
-                # )
-
-                R, _ = cv2.Rodrigues(rvec[0])
+                R, _ = cv2.Rodrigues(rvec)
                 cam_x, cam_y, cam_z = tvec
 
-                # marker_y_cam = R[:, 1]
+                marker_y_cam = R[:, 1]
 
-                # approach_direction = (
-                #     -np.sign(np.dot(marker_y_cam, tvec[0][0])) * marker_y_cam
-                # )
+                # Approach direction is negative if... and positive if...
+                approach_direction = -np.sign(np.dot(marker_y_cam, tvec)) * marker_y_cam
+
+                self.logger.info(f"Approach direction: {approach_direction}")
 
                 # cam_x += approach_direction[0] * distance
                 # cam_z += approach_direction[2] * distance
+
+                self.logger.info(
+                    "=" * 20
+                    + f"Current location:\n{self.odom.pose.pose.position}\nProposed new location:\n{self.odom.pose.pose.position.x + cam_z + approach_direction[2], self.odom.pose.pose.position.y + cam_x + approach_direction[0], 0.0}"
+                    + "=" * 20
+                )
 
                 self.logger.warn(
                     f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})"
