@@ -196,6 +196,7 @@ class RetrieveNode(Node):
             self.logger.info(
                 f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}"
             )
+            self.logger.info(f"State Machine State: {self.state.name.lower()}")
 
             marker_center_x = int(
                 (
@@ -243,9 +244,7 @@ class RetrieveNode(Node):
                 elif depth_msg.encoding == "16UC1":
                     distance = float(depth_val) / 1000.0  # mm to meters
                 else:
-                    self.get_logger().warn(
-                        f"Unsupported encoding: {depth_msg.encoding}"
-                    )
+                    self.logger.warn(f"Unsupported encoding: {depth_msg.encoding}")
                     return
 
                 if len(marker_corners) != 4:
