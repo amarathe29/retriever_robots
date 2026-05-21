@@ -269,11 +269,13 @@ class RetrieveNode(Node):
                 else:
                     self.logger.error(f"PnP Solver Failed: {ok}")
                     return
-                # I know we don't have roll and yaw, but what if we decide to change that, future proofing right?
+
+                # TODO: Split this into a function probably? I mean, that's the responsible thing to do... so of course I won't, but I acknowledge that I should.
+                # I know we don't have roll and yaw, but what if we decide to change that, future proofing right? right?  (p.s. I know this is going to bother you Zane)
                 # roll
                 gamma = np.radians(0)
                 # pitch
-                beta = np.radians(30)
+                beta = np.radians(-30)
                 # yaw
                 alpha = np.radians(0)
 
@@ -358,15 +360,13 @@ class RetrieveNode(Node):
                     + "=" * 20
                 )
 
-                dx = cam_z
-                dy = -cam_x
-
                 self.grab_pose = Pose()
-                self.grab_pose.position.x = self.odom.pose.pose.position.x + dx
-                self.grab_pose.position.y = self.odom.pose.pose.position.y + dy
+                self.grab_pose.position.x = desired_location[0]
+                self.grab_pose.position.y = desired_location[1]
                 self.grab_pose.position.z = 0.0
 
-                # yaw = np.arctan2(-approach_direction[0], approach_direction[2])
+                # Yaw probably needs a negative or something, I'm not sure
+                yaw = np.arctan2(approach_direction[0], approach_direction[1])
                 yaw = 0.0
                 quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
 
@@ -473,17 +473,10 @@ class RetrieveNode(Node):
         return result
 
     def angle_wrap(self, angle: float) -> float:
-        while angle > np.pi:
-            angle -= 2 * np.pi
-        while angle < -np.pi:
-            angle += 2 * np.pi
-        return angle
+        wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
+        return wrapped
 
-    def go_to_pose(self, target_pose: Pose) -> bool:
-
-        # for now, just pretend we went there
-        self.logger.error(f"Gone to pose: {target_pose}")
-        return True
+    def pose_controller(self, target_pose: Pose) -> Twist:
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
@@ -493,15 +486,22 @@ class RetrieveNode(Node):
         dy = target_pose.position.y - self.curr_pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
-        q = self.curr_pose.orientation
-        _, _, current_yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
+        q_curr = self.curr_pose.orientation
+        _, _, current_yaw = euler_from_quaternion(
+            q_curr.x, q_curr.y, q_curr.z, q_curr.w
+        )
         angle_diff = self.angle_wrap(angle_to_target - current_yaw)
-        desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
+        q_desired = target_pose.orientation
+        _, _, desired_yaw = euler_from_quaternion(
+            q_desired.x, q_desired.y, q_desired.z, q_desired.w
+        )
+        desired_yaw_diff = self.angle_wrap(desired_yaw - current_yaw)
 
         cmd = Twist()
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
+        # TODO: Double-check this works with the new changes
         if abs(angle_diff) > 0.1 and distance > 0.15:
             cmd.angular.z = angular_gain * angle_diff
         else:
@@ -511,10 +511,92 @@ class RetrieveNode(Node):
                 if abs(desired_yaw_diff) > 0.1:
                     cmd.angular.z = angular_gain * desired_yaw_diff
                 else:
-                    return True
+                    return Twist()
 
+        return cmd
+
+    # TODO: Implement the robot moving backwards
+    def pose_controller_reverse(self, target_pose: Pose) -> Twist:
+        pass
+
+    # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
+    # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
+    def pose_controller_clf(self, target_pose: Pose, gamma=1.0, k=3.0, h=-0.5) -> Twist:
+        assert gamma > 0, f"gamma = {gamma} must be greater than 0"
+        assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
+        assert h > 0, f"h = {h} must be greater than 0"
+
+        q_curr = self.curr_pose.orientation
+        _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
+        q_desired = target_pose.orientation
+        _, _, desired_theta = euler_from_quaternion(
+            q_desired.x, q_desired.y, q_desired.z, q_desired.w
+        )
+
+        dx = target_pose.position.x - self.curr_pose.position.x
+        dy = target_pose.position.y - self.curr_pose.position.y
+
+        # We're going to do things in the frame of reference of the goal position, because apparently that makes behavior more consistent (shoutout to my old advisor for this controller)
+        R = np.array(
+            [
+                [np.cos(-desired_theta), -np.sin(-desired_theta)],
+                [np.sin(-desired_theta), np.cos(-desired_theta)],
+            ]
+        )
+
+        # positional error from the goal's frame of reference
+        position_error = R @ np.array([dx, dy])
+        e = np.linalg.norm(position_error)
+
+        # Angle to goal from goal frame
+        theta_error_vec = np.arctan2(position_error[1], position_error[0])
+
+        alpha = theta_error_vec - (theta - desired_theta)
+        alpha = self.angle_wrap(alpha)
+
+        ca = np.cos(alpha)
+        sa = np.sin(alpha)
+
+        v = gamma * e * ca
+
+        # Prevent divide by zero errors
+        sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
+        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        cmd = Twist()
+        cmd.linear.x = v
+        cmd.angular.z = w
+        return cmd
+
+    def check_reached_target(self, target_pose: Pose) -> bool:
+        if self.curr_pose is None:
+            self.logger.warning("Current pose is unknown, cannot navigate")
+            return
+
+        dx = target_pose.position.x - self.curr_pose.position.x
+        dy = target_pose.position.y - self.curr_pose.position.y
+        distance = np.sqrt(dx**2 + dy**2)
+        angle_to_target = np.arctan2(dy, dx)
+        q_curr = self.curr_pose.orientation
+        _, _, current_yaw = euler_from_quaternion(
+            q_curr.x, q_curr.y, q_curr.z, q_curr.w
+        )
+        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
+
+        # If we haven't reached the target, return false, else we return true
+        if abs(angle_diff) > 0.1 or distance > 0.1:
+            return False
+
+        return True
+
+    def go_to_pose(self, target_pose: Pose, controller=pose_controller) -> bool:
+        # for now, just pretend we went there
+        self.logger.error(f"Gone to pose: {target_pose}")
+        return True
+
+        cmd = self.pose_controller(self.request_pose)
         self.vel_pub.publish(cmd)
-        return False
+        reached = self.check_reached_target(self.request_pose)
+        return reached
 
     @property
     def curr_pose(self):
