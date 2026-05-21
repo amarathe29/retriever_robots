@@ -165,6 +165,9 @@ class RetrieveNode(Node):
             self.logger.debug(f"Camera matrix: {self.camera_matrix}")
             return
 
+        if self.state == StateMachine.IDLE:
+            return
+
         try:
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
             depth = self.bridge.imgmsg_to_cv2(depth_msg)
@@ -292,7 +295,7 @@ class RetrieveNode(Node):
                 )
 
                 self.logger.warn(
-                    f"Block center is {distance} m away at camera coordinates ({cam_x}, {cam_y}, {cam_z})"
+                    f"Block center is {cam_z} m away at camera coordinates (x: {cam_x}, y: {cam_y})"
                 )
 
                 dx = cam_z
