@@ -287,7 +287,7 @@ class RetrieveNode(Node):
                 )
 
                 if ok:
-                    self.logger.debug(f"tvec:\n{tvec}\nrvec:\n{rvec}")
+                    self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
                 else:
                     return
 
@@ -306,7 +306,7 @@ class RetrieveNode(Node):
 
                 self.logger.info(
                     "=" * 20
-                    + f"Current location:\n{self.odom.pose.pose.position}\nProposed new location:\n{self.odom.pose.pose.position.x + cam_z + approach_direction[2], self.odom.pose.pose.position.y + cam_x + approach_direction[0], 0.0}"
+                    + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{self.odom.pose.pose.position.x + cam_z + approach_direction[2], self.odom.pose.pose.position.y + cam_x + approach_direction[0], 0.0}\n"
                     + "=" * 20
                 )
 
