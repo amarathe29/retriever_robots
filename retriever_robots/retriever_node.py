@@ -301,6 +301,7 @@ class RetrieveNode(Node):
                 dx = cam_z
                 dy = -cam_x
 
+                self.grab_pose = Pose()
                 self.grab_pose.position.x = self.odom.pose.pose.position.x + dx
                 self.grab_pose.position.y = self.odom.pose.pose.position.y + dy
                 self.grab_pose.position.z = 0.0
