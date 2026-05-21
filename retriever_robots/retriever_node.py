@@ -300,7 +300,7 @@ class RetrieveNode(Node):
                 # Approach direction is negative if... and positive if...
                 approach_direction = (
                     -np.sign(np.dot(marker_y_cam, tvec))
-                    * np.linalg.norm(marker_y_cam)
+                    * (marker_y_cam / np.linalg.norm(marker_y_cam))
                     * desired_dist
                 )
 
