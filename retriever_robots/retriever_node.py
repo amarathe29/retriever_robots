@@ -269,34 +269,69 @@ class RetrieveNode(Node):
                 else:
                     self.logger.error(f"PnP Solver Failed: {ok}")
                     return
+                # I know we don't have roll and yaw, but what if we decide to change that, future proofing right?
+                # roll
+                gamma = np.radians(0)
+                # pitch
+                beta = np.radians(30)
+                # yaw
+                alpha = np.radians(0)
+                
+                R_marker_to_cam, _ = cv2.Rodrigues(rvec)
+                # Double checking: Image X is robot -Y, Image Y is Robot -Z, and Image Z is robot X
+                R_image_to_robotics = np.array([[0, -1, 0], [0,0,-1], [1,0,0]])
+                R_euler_to_matrix = np.array([[(np.cos(alpha) * np.cos(beta)), ((np.cos(alpha)*np.sin(beta)*np.sin(gamma))-(np.sin(alpha)*np.cos(gamma))), ((np.cos(alpha)*np.sin(beta)*np.cos(gamma)) + (np.sin(alpha)*np.sin(gamma)))], 
+                                          [(np.sin(alpha) * np.cos(beta)), ((np.sin(alpha)*np.sin(beta)*np.sin(gamma))+(np.cos(alpha)*np.cos(gamma))), ((np.sin(alpha)*np.sin(beta)*np.cos(gamma)) - (np.cos(alpha)*np.sin(gamma)))],
+                                          [(-np.sin(beta)), (np.cos(beta)*np.sin(gamma)), (np.cos(beta)*np.cos(gamma))]])
+                R_cam_to_robot = R_euler_to_matrix @ R_image_to_robotics
 
-                R, _ = cv2.Rodrigues(rvec)
-                cam_x, cam_y, cam_z = tvec
+                # The camera is like 10 cm in front of the robot wheel base, honestly this is probably unnecessary, I added it just in case
+                T_cam_to_robot = np.array([[-0.1], [0.0], [0.0]])
 
-                marker_y_cam = R[:, 1]
-                marker_y_cam[2] = 0.0
-                desired_dist = 0.1
-                # Approach direction is negative if... and positive if...
-                approach_direction = (
-                    -np.sign(np.dot(marker_y_cam, tvec))
-                    * (marker_y_cam / np.linalg.norm(marker_y_cam))
-                    * desired_dist
+                R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
+                
+                # cam_x, cam_y, cam_z = tvec
+                
+                
+                marker_x_robot = R_marker_to_robot[:, 0].reshape(3,1)
+                marker_x_robot[2] = 0.0
+                T_marker_to_cam = tvec.reshape(3,1)
+                T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+
+                self.logger.warn(
+                    f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
                 )
+                
+                desired_dist = 0.1
+                # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
+                approach_direction = (
+                    -np.sign(np.dot(marker_x_robot, T_marker_to_robot))
+                )
+                approach_direction /= np.linalg.norm(approach_direction)
 
+                # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
+                # marker_z_robot = R_marker_to_robot[:, 2].reshape(3,1)
+                # marker_z_robot[2] = 0.0
+                # approach_direction = marker_z_robot / np.linalg.norm(marker_z_robot)
+
+                
+                # TODO: Verify this is a unit vector and a meaningful one, and not just all in one direction
                 self.logger.info(f"Approach direction: {approach_direction}")
+                
 
-                # cam_x += approach_direction[0] * distance
-                # cam_z += approach_direction[2] * distance
+                # Just in case self.curr_pose changes for some reason between reads to create this array, we'll store it as a var and use that
+                curr_pose = self.curr_pose
+                curr_loc = np.array([curr_pose.position.x, curr_pose.position.y, curr_pose.position.z])
+                desired_location = curr_loc + T_marker_to_robot + desired_dist * approach_direction
 
+                # The new location Z better be god damn 0
                 self.logger.info(
                     "=" * 20
-                    + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{self.odom.pose.pose.position.x + cam_z + approach_direction[2], self.odom.pose.pose.position.y + cam_x + approach_direction[0], 0.0}\n"
+                    + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{desired_location}\n"
                     + "=" * 20
                 )
 
-                self.logger.warn(
-                    f"Block center is {cam_z} m away at camera coordinates (x: {cam_x}, y: {cam_y})"
-                )
+
 
                 dx = cam_z
                 dy = -cam_x
