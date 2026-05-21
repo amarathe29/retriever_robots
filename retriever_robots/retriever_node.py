@@ -165,21 +165,11 @@ class RetrieveNode(Node):
             self.logger.debug(f"Camera matrix: {self.camera_matrix}")
             return
 
-        if self.state not in [
-            StateMachine.FIND_BLOCK_POSE,
-            StateMachine.REACH_BLOCK,
-            StateMachine.GRABBING,
-            StateMachine.STOCKPILING,
-        ]:
-            self.grab_pose = Pose()
-            self.marker_location = None
-            return
-
         try:
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
             depth = self.bridge.imgmsg_to_cv2(depth_msg)
         except Exception as e:
-            self.logger.error(f"Error in deconding images from camera: {e}")
+            self.logger.error(f"Error in decoding images from camera: {e}")
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         try:
@@ -226,26 +216,12 @@ class RetrieveNode(Node):
                 depth = cv2.resize(
                     depth, (width, height), interpolation=cv2.INTER_NEAREST
                 )
-            depth_val = depth[marker_center_y, marker_center_x]
-            if (
-                self.state == StateMachine.REACH_BLOCK
-                or self.state == StateMachine.STOCKPILING
-                or self.state == StateMachine.GRABBING
-            ):
-                self.marker_location = (marker_center_x, marker_center_y, depth_val)
 
             if (self.state == StateMachine.FIND_BLOCK_POSE) and (
                 self.grab_pose == Pose()
             ):
 
                 self.logger.info(f"Searching for block")
-                if depth_msg.encoding == "32FC1":
-                    distance = float(depth_val)
-                elif depth_msg.encoding == "16UC1":
-                    distance = float(depth_val) / 1000.0  # mm to meters
-                else:
-                    self.logger.warn(f"Unsupported encoding: {depth_msg.encoding}")
-                    return
 
                 if len(marker_corners) != 4:
                     self.logger.error(
@@ -348,18 +324,20 @@ class RetrieveNode(Node):
 
             if self.state == StateMachine.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
-                self.state = StateMachine.NAVIGATING
+                self.grab_pose = Pose()
+                self.marker_location = None
                 self.logger.info(
                     f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
                 )
+                self.state = StateMachine.NAVIGATING
 
             elif self.state == StateMachine.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
                 if reached:
-                    self.state = StateMachine.FIND_BLOCK_POSE
                     self.logger.info(
                         f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
                     )
+                    self.state = StateMachine.FIND_BLOCK_POSE
             elif self.state == StateMachine.FIND_BLOCK_POSE:
                 if self.grab_pose != Pose() and self.grab_pose is not None:
                     self.logger.info(
@@ -377,10 +355,11 @@ class RetrieveNode(Node):
 
             elif self.state == StateMachine.GRABBING:
                 # TODO: This should approach and capture the block
-                self.state = StateMachine.STOCKPILING
                 self.logger.info(
                     f"Grabbed block, entering STOCKPILING state to stockpile block"
                 )
+                self.state = StateMachine.STOCKPILING
+                pass
 
             elif self.state == StateMachine.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
