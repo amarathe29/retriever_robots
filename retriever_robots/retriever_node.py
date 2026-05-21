@@ -439,16 +439,17 @@ class RetrieveNode(Node):
         desired_yaw_diff = self.angle_wrap(target_pose.orientation.z - current_yaw)
 
         cmd = Twist()
-        p = 0.3  # Arbitrary gain cause why not
+        linear_gain = 0.3  # Arbitrary gain cause why not
+        angular_gain = 0.7
 
         if abs(angle_diff) > 0.1 and distance > 0.15:
-            cmd.angular.z = p * angle_diff
+            cmd.angular.z = angular_gain * angle_diff
         else:
             if distance > 0.1:
-                cmd.linear.x = p * distance
+                cmd.linear.x = linear_gain * distance
             else:
                 if abs(desired_yaw_diff) > 0.1:
-                    cmd.angular.z = p * desired_yaw_diff
+                    cmd.angular.z = angular_gain * desired_yaw_diff
                 else:
                     return True
 
