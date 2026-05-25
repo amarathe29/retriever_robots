@@ -64,6 +64,29 @@ def quaternion_from_euler(roll, pitch, yaw):
 
     return q
 
+def create_rotation_matrix(roll=0, pitch=0, yaw=0, units='radians'):
+
+    if units == 'degrees':
+        roll = np.radians(roll)
+        pitch = np.radians(pitch)
+        yaw = np.radians(yaw)
+
+    R_x = np.array([[1, 0, 0],
+                    [0, np.cos(roll), -np.sin(roll)],
+                    [0, np.sin(roll), np.cos(roll)]])
+    R_y = np.array([[np.cos(pitch), 0, np.sin(pitch)],
+                    [0, 1, 0],
+                    [-np.sin(pitch), 0, np.cos(pitch)]])
+    R_z = np.array([[np.cos(yaw), -np.sin(yaw), 0],
+                    [np.sin(yaw), np.cos(yaw), 0],
+                    [0, 0, 1]])
+    R = R_z @ R_y @ R_x
+
+
+    return R
+
+
+
 
 class RetrieveNode(Node):
     """docstring for RetrieveNode."""
@@ -82,22 +105,17 @@ class RetrieveNode(Node):
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
         )
-        self.depth_sub = message_filters.Subscriber(
-            self,
-            Image,
-            f"{self.get_namespace()}/camera/depth/image_rect_raw",
-        )
         self.color_info = message_filters.Subscriber(
             self,
             CameraInfo,
             f"{self.get_namespace()}/camera/color/camera_info",
         )
 
-        queue_size = 10
-        slop = 0.5
+        queue_size = 2
+        slop = 0.2
 
         self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.color_sub, self.depth_sub, self.color_info], queue_size, slop
+            [self.color_sub, self.color_info], queue_size, slop
         )
 
         self.ts.registerCallback(self.cam_callback)
@@ -152,7 +170,7 @@ class RetrieveNode(Node):
             self._start_pose = self.odom.pose.pose
 
     def cam_callback(
-        self, color_msg: Image, depth_msg: Image, color_info: CameraInfo
+        self, color_msg: Image, color_info: CameraInfo
     ) -> None:
 
         if (self.camera_matrix is None) or (self.distortion_coeffs is None):
@@ -170,7 +188,6 @@ class RetrieveNode(Node):
 
         try:
             image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
-            depth = self.bridge.imgmsg_to_cv2(depth_msg)
         except Exception as e:
             self.logger.error(f"Error in decoding images from camera: {e}")
 
@@ -191,190 +208,115 @@ class RetrieveNode(Node):
             )
             self.logger.info(f"State Machine State: {self.state.name.lower()}")
 
-            marker_center_x = int(
-                (
-                    marker_corners[0][0]
-                    + marker_corners[1][0]
-                    + marker_corners[2][0]
-                    + marker_corners[3][0]
-                )
-                // 4
-            )
-            marker_center_y = int(
-                (
-                    marker_corners[0][1]
-                    + marker_corners[1][1]
-                    + marker_corners[2][1]
-                    + marker_corners[3][1]
-                )
-                // 4
-            )
+            if (self.state == StateMachine.FIND_BLOCK_POSE):
+                if (self.grab_pose is None):
 
-            # Find distance to block center,
-            # reshape depth image to be same size as color image if needed
-            if depth.shape != gray.shape:
-                self.logger.warning(
-                    f"Depth image shape {depth.shape} does not match color image shape {gray.shape}, resizing depth image"
-                )
-                depth = cv2.resize(
-                    depth, (width, height), interpolation=cv2.INTER_NEAREST
-                )
+                    self.logger.info(f"Searching for block")
 
-            if (self.state == StateMachine.FIND_BLOCK_POSE) and (
-                self.grab_pose is None
-            ):
+                    if len(marker_corners) != 4:
+                        self.logger.error(
+                            f"Detected marker {marker_corners} does not have 4 corners, cannot estimate pose"
+                        )
+                        return
 
-                self.logger.info(f"Searching for block")
-
-                if len(marker_corners) != 4:
                     self.logger.error(
-                        f"Detected marker {marker_corners} does not have 4 corners, cannot estimate pose"
+                        f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
                     )
-                    return
 
-                self.logger.error(
-                    f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
-                )
+                    # DEBUG: write the img to file with aruco tags detected
+                    im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
+                    cv2.imwrite("detected_markers.png", im)
 
-                im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
-                # also put a circle around the camera intrinsics principal point
-                cv2.circle(
-                    im,
-                    (int(self.camera_matrix[0, 2]), int(self.camera_matrix[1, 2])),
-                    5,
-                    (0, 255, 0),
-                    -1,
-                )
-                cv2.imwrite("detected_markers.png", im)
-
-                obj_pts = np.array(
-                    [
-                        [-self.marker_size / 2, self.marker_size / 2, 0.0],
-                        [self.marker_size / 2, self.marker_size / 2, 0.0],
-                        [self.marker_size / 2, -self.marker_size / 2, 0.0],
-                        [-self.marker_size / 2, -self.marker_size / 2, 0.0],
-                    ],
-                    dtype=np.float64,
-                )
-                ok, rvec, tvec = cv2.solvePnP(
-                    obj_pts,
-                    marker_corners,
-                    self.camera_matrix,
-                    self.distortion_coeffs,
-                    flags=cv2.SOLVEPNP_IPPE_SQUARE,
-                )
-
-                if ok:
-                    self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
-                else:
-                    self.logger.error(f"PnP Solver Failed: {ok}")
-                    return
-
-                # TODO: Split this into a function probably? I mean, that's the responsible thing to do... so of course I won't, but I acknowledge that I should.
-                # I know we don't have roll and yaw, but what if we decide to change that, future proofing right? right?  (p.s. I know this is going to bother you Zane)
-                # roll
-                gamma = np.radians(0)
-                # pitch
-                beta = np.radians(-30)
-                # yaw
-                alpha = np.radians(0)
-
-                R_marker_to_cam, _ = cv2.Rodrigues(rvec)
-                # Double checking: Image X is robot -Y, Image Y is Robot -Z, and Image Z is robot X
-                R_image_to_robotics = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
-                R_euler_to_matrix = np.array(
-                    [
+                    obj_pts = np.array(
                         [
-                            (np.cos(alpha) * np.cos(beta)),
-                            (
-                                (np.cos(alpha) * np.sin(beta) * np.sin(gamma))
-                                - (np.sin(alpha) * np.cos(gamma))
-                            ),
-                            (
-                                (np.cos(alpha) * np.sin(beta) * np.cos(gamma))
-                                + (np.sin(alpha) * np.sin(gamma))
-                            ),
+                            [-self.marker_size / 2, self.marker_size / 2, 0.0],
+                            [self.marker_size / 2, self.marker_size / 2, 0.0],
+                            [self.marker_size / 2, -self.marker_size / 2, 0.0],
+                            [-self.marker_size / 2, -self.marker_size / 2, 0.0],
                         ],
-                        [
-                            (np.sin(alpha) * np.cos(beta)),
-                            (
-                                (np.sin(alpha) * np.sin(beta) * np.sin(gamma))
-                                + (np.cos(alpha) * np.cos(gamma))
-                            ),
-                            (
-                                (np.sin(alpha) * np.sin(beta) * np.cos(gamma))
-                                - (np.cos(alpha) * np.sin(gamma))
-                            ),
-                        ],
-                        [
-                            (-np.sin(beta)),
-                            (np.cos(beta) * np.sin(gamma)),
-                            (np.cos(beta) * np.cos(gamma)),
-                        ],
-                    ]
-                )
-                R_cam_to_robot = R_euler_to_matrix @ R_image_to_robotics
+                        dtype=np.float64,
+                    )
+                    ok, rvec, tvec = cv2.solvePnP(
+                        obj_pts,
+                        marker_corners,
+                        self.camera_matrix,
+                        self.distortion_coeffs,
+                        flags=cv2.SOLVEPNP_IPPE_SQUARE,
+                    )
 
-                # The camera is like 10 cm in front of the robot wheel base, honestly this is probably unnecessary, I added it just in case
-                T_cam_to_robot = np.array([[-0.1], [0.0], [0.0]])
+                    if ok:
+                        self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
+                    else:
+                        self.logger.error(f"PnP Solver Failed: {ok}")
+                        return
 
-                R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
 
-                # cam_x, cam_y, cam_z = tvec
+                    R_marker_to_cam, _ = cv2.Rodrigues(rvec)
+                    # Double checking: Image X is robot -Y, Image Y is Robot -Z, and Image Z is robot X
+                    R_image_to_robot_axes = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
+                    R_cam_angle_to_robot = create_rotation_matrix(pitch=-30, units='degrees')
+                    R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
 
-                marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
-                marker_x_robot[2] = 0.0
-                T_marker_to_cam = tvec.reshape(3, 1)
-                T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+                    # The camera is like 10 cm in front of the robot wheel base, honestly this is probably unnecessary, I added it just in case
+                    T_cam_to_robot = np.array([[-0.1], [0.0], [0.0]])
 
-                self.logger.warn(
-                    f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
-                )
+                    R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
 
-                desired_dist = 0.1
-                # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
-                approach_direction = -np.sign(np.dot(marker_x_robot, T_marker_to_robot))
-                approach_direction /= np.linalg.norm(approach_direction)
+                    # cam_x, cam_y, cam_z = tvec
 
-                # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
-                # marker_z_robot = R_marker_to_robot[:, 2].reshape(3,1)
-                # marker_z_robot[2] = 0.0
-                # approach_direction = marker_z_robot / np.linalg.norm(marker_z_robot)
+                    marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
+                    marker_x_robot[2] = 0.0
+                    T_marker_to_cam = tvec.reshape(3, 1)
+                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
 
-                # TODO: Verify this is a unit vector and a meaningful one, and not just all in one direction
-                self.logger.info(f"Approach direction: {approach_direction}")
+                    self.logger.warn(
+                        f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
+                    )
 
-                # Just in case self.curr_pose changes for some reason between reads to create this array, we'll store it as a var and use that
-                curr_pose = self.curr_pose
-                curr_loc = np.array(
-                    [curr_pose.position.x, curr_pose.position.y, curr_pose.position.z]
-                )
-                desired_location = (
-                    curr_loc + T_marker_to_robot + desired_dist * approach_direction
-                )
+                    desired_dist = 0.1
+                    # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
+                    approach_direction = -np.sign(np.dot(marker_x_robot, T_marker_to_robot))
+                    approach_direction /= np.linalg.norm(approach_direction)
 
-                # The new location Z better be god damn 0
-                self.logger.info(
-                    "=" * 20
-                    + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{desired_location}\n"
-                    + "=" * 20
-                )
+                    # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
+                    # marker_z_robot = R_marker_to_robot[:, 2].reshape(3,1)
+                    # marker_z_robot[2] = 0.0
+                    # approach_direction = marker_z_robot / np.linalg.norm(marker_z_robot)
 
-                self.grab_pose = Pose()
-                self.grab_pose.position.x = desired_location[0]
-                self.grab_pose.position.y = desired_location[1]
-                self.grab_pose.position.z = 0.0
+                    # TODO: Verify this is a unit vector and a meaningful one, and not just all in one direction
+                    self.logger.info(f"Approach direction: {approach_direction}")
 
-                # Yaw probably needs a negative or something, I'm not sure
-                yaw = np.arctan2(approach_direction[0], approach_direction[1])
-                yaw = 0.0
-                quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
+                    # Just in case self.curr_pose changes for some reason between reads to create this array, we'll store it as a var and use that
+                    curr_pose = self.curr_pose
+                    curr_loc = np.array(
+                        [curr_pose.position.x, curr_pose.position.y, curr_pose.position.z]
+                    )
+                    desired_location = (
+                        curr_loc + T_marker_to_robot + desired_dist * approach_direction
+                    )
 
-                self.grab_pose.orientation.w = quaternion[0]
-                self.grab_pose.orientation.x = quaternion[1]
-                self.grab_pose.orientation.y = quaternion[2]
-                self.grab_pose.orientation.z = quaternion[3]
-                self.logger.info(f"Estimated grab pose: {self.grab_pose}")
+                    # The new location Z better be god damn 0
+                    self.logger.info(
+                        "=" * 20
+                        + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{desired_location}\n"
+                        + "=" * 20
+                    )
+
+                    self.grab_pose = Pose()
+                    self.grab_pose.position.x = desired_location[0]
+                    self.grab_pose.position.y = desired_location[1]
+                    self.grab_pose.position.z = 0.0
+
+                    # Yaw probably needs a negative or something, I'm not sure
+                    yaw = np.arctan2(approach_direction[0], approach_direction[1])
+                    yaw = 0.0
+                    quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
+
+                    self.grab_pose.orientation.w = quaternion[0]
+                    self.grab_pose.orientation.x = quaternion[1]
+                    self.grab_pose.orientation.y = quaternion[2]
+                    self.grab_pose.orientation.z = quaternion[3]
+                    self.logger.info(f"Estimated grab pose: {self.grab_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
@@ -470,6 +412,7 @@ class RetrieveNode(Node):
         result = GoToBlock.Result()
         result.success = False
         result.end_pose = self.curr_pose
+        # add gracefull returning to idle and the idle position here
         return result
 
     def angle_wrap(self, angle: float) -> float:
