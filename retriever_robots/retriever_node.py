@@ -7,11 +7,9 @@ from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
-import message_filters
 
-from utils import euler_from_quaternion, quaternion_from_euler, create_rotation_matrix, angle_wrap
+from retriever_robots.utils import euler_from_quaternion, quaternion_from_euler, create_rotation_matrix, angle_wrap
 
-from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from enum import Enum, auto
@@ -88,125 +86,6 @@ class RetrieveNode(Node):
     def visible_block_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received visible blocks: {msg}")
 
-    def cam_callback(
-        self, color_msg: Image, color_info: CameraInfo
-    ) -> None:
-
-        if (self.camera_matrix is None) or (self.distortion_coeffs is None):
-            self.logger.warning("No camera info received yet, cannot process image")
-            self.logger.info("Received camera info, saving camera matrix")
-            self.camera_matrix = np.array(color_info.k, dtype=np.float64).reshape(
-                (3, 3)
-            )
-            self.distortion_coeffs = np.array(color_info.d, dtype=np.float64)
-            self.logger.debug(f"Camera matrix: {self.camera_matrix}")
-            return
-
-        if self.state == StateMachine.IDLE:
-            return
-
-        try:
-            image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
-        except Exception as e:
-            self.logger.error(f"Error in decoding images from camera: {e}")
-
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        corners, ids, _ = cv2.aruco.detectMarkers(
-            gray, self.aruco_dict, parameters=self.aruco_parameters
-        )
-
-        self.logger.info(f"Detected {len(ids) if ids is not None else 0} ArUco marker(s)")
-
-
-        if ids is not None:
-
-            # self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
-            marker_corners = corners[0][0]
-            self.logger.info(
-                f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}"
-            )
-            self.logger.info(f"State Machine State: {self.state.name.lower()}")
-
-            if (self.state == StateMachine.FIND_GRAB_POSE):
-                if (self.grab_pose is None):
-
-                    self.logger.info(f"Searching for block")
-
-                    if len(marker_corners) != 4:
-                        self.logger.error(
-                            f"Detected marker {marker_corners} does not have 4 corners, cannot estimate pose"
-                        )
-                        return
-
-                    self.logger.error(
-                        f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
-                    )
-
-                    # DEBUG: write the img to file with aruco tags detected
-                    im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
-                    cv2.imwrite("detected_markers.png", im)
-
-                    obj_pts = np.array(
-                        [
-                            [-self.marker_size / 2, self.marker_size / 2, 0.0],
-                            [self.marker_size / 2, self.marker_size / 2, 0.0],
-                            [self.marker_size / 2, -self.marker_size / 2, 0.0],
-                            [-self.marker_size / 2, -self.marker_size / 2, 0.0],
-                        ],
-                        dtype=np.float64,
-                    )
-                    ok, rvec, tvec = cv2.solvePnP(
-                        obj_pts,
-                        marker_corners,
-                        self.camera_matrix,
-                        self.distortion_coeffs,
-                        flags=cv2.SOLVEPNP_IPPE_SQUARE,
-                    )
-
-                    if ok:
-                        self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
-                    else:
-                        self.logger.error(f"PnP Solver Failed: {ok}")
-                        return
-
-
-                    R_marker_to_cam, _ = cv2.Rodrigues(rvec)
-                    # Double checking: Image X is robot -Y, Image Y is Robot -Z, and Image Z is robot X
-                    R_image_to_robot_axes = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
-                    R_cam_angle_to_robot = create_rotation_matrix(pitch=-30, units='degrees')
-                    R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
-
-                    # The camera is like 10 cm in front of the robot wheel base, honestly this is probably unnecessary, I added it just in case
-                    T_cam_to_robot = np.array([[-0.1], [0.0], [0.0]])
-
-                    R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-
-                    # cam_x, cam_y, cam_z = tvec
-
-                    marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
-                    marker_x_robot[2] = 0.0
-                    T_marker_to_cam = tvec.reshape(3, 1)
-                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
-
-                    self.logger.warn(
-                        f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
-                    )
-
-
-                    self.grab_pose = Pose()
-                    self.grab_pose.position.x = 0.0
-                    self.grab_pose.position.y = 0.0
-                    self.grab_pose.position.z = 0.0
-
-                    yaw = np.arctan2(T_marker_to_robot[0], T_marker_to_robot[1])
-                    quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
-
-                    self.grab_pose.orientation.w = quaternion[0]
-                    self.grab_pose.orientation.x = quaternion[1]
-                    self.grab_pose.orientation.y = quaternion[2]
-                    self.grab_pose.orientation.z = quaternion[3]
-                    self.logger.info(f"Estimated grab pose: {self.grab_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         """action handler for the retrieve action server"""

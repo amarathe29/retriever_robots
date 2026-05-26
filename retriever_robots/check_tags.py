@@ -7,7 +7,7 @@ from geometry_msgs.msg import Twist, Pose
 from cv_bridge import CvBridge
 import cv2
 
-from utils import quaternion_from_euler, create_rotation_matrix
+from retriever_robots.utils import quaternion_from_euler, create_rotation_matrix
 
 import message_filters
 
@@ -30,10 +30,10 @@ class CheckTags(Node):
         self.get_logger().info("CheckTags node has been started.")
 
 
-        self.pub = self.create_publisher(Twist, "/asher/cmd_vel", 10)
+        self.pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
 
         # communicates the location of the identified block back to the retriever node. This is a custom topic, not a standard ROS topic, so we can change it as needed.
-        self.vis_pub = self.create_publisher(Pose, "/asher/visible_block", 10)
+        self.vis_pub = self.create_publisher(Pose, f"{self.get_namespace()}/visible_block", 10)
 
         self.camera_matrix = None
         self.distortion_coeffs = None
@@ -78,8 +78,6 @@ class CheckTags(Node):
                 return
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
            
-            # self.get_logger().info("Received an image.")
-
             corners, ids, _ = cv2.aruco.detectMarkers(cv_image, self.aruco_dict, parameters=self.parameters)
             if ids is not None:
 
