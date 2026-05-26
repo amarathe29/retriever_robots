@@ -19,7 +19,7 @@ import math
 class StateMachine(Enum):
     IDLE = auto()
     NAVIGATING = auto()
-    FIND_BLOCK_POSE = auto()
+    FIND_GRAB_POSE = auto()
     POSITIONING = auto()
     GRABBING = auto()
     STOCKPILING = auto()
@@ -154,7 +154,7 @@ class RetrieveNode(Node):
         self.start_pose_set = False
         self._start_pose = None
         self.request_pose = None
-        self.block_pose = None
+        self.grab_pose = None
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -209,8 +209,8 @@ class RetrieveNode(Node):
             )
             self.logger.info(f"State Machine State: {self.state.name.lower()}")
 
-            if (self.state == StateMachine.FIND_BLOCK_POSE):
-                if (self.block_pose is None):
+            if (self.state == StateMachine.FIND_GRAB_POSE):
+                if (self.grab_pose is None):
 
                     self.logger.info(f"Searching for block")
 
@@ -268,56 +268,26 @@ class RetrieveNode(Node):
                     marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
                     marker_x_robot[2] = 0.0
                     T_marker_to_cam = tvec.reshape(3, 1)
-                    T_marker_to_robot = T_marker_to_cam @ R_cam_to_robot + T_cam_to_robot
+                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
 
                     self.logger.warn(
                         f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
                     )
 
-                    desired_dist = 0.1
-                    # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
-                    approach_direction = -np.sign(np.dot(marker_x_robot.flatten(), T_marker_to_robot.flatten())) * marker_x_robot.flatten()
-                    approach_direction /= np.linalg.norm(approach_direction)
 
-                    # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
-                    # marker_z_robot = R_marker_to_robot[:, 2].reshape(3,1)
-                    # marker_z_robot[2] = 0.0
-                    # approach_direction = marker_z_robot / np.linalg.norm(marker_z_robot)
+                    self.grab_pose = Pose()
+                    self.grab_pose.position.x = 0.0
+                    self.grab_pose.position.y = 0.0
+                    self.grab_pose.position.z = 0.0
 
-                    # TODO: Verify this is a unit vector and a meaningful one, and not just all in one direction
-                    self.logger.info(f"Approach direction: {approach_direction}")
-
-                    # Just in case self.curr_pose changes for some reason between reads to create this array, we'll store it as a var and use that
-                    curr_pose = self.curr_pose
-                    curr_loc = np.array(
-                        [curr_pose.position.x, curr_pose.position.y, curr_pose.position.z]
-                    )
-                    desired_location = (
-                        curr_loc + T_marker_to_robot + desired_dist * approach_direction
-                    )
-
-                    # The new location Z better be god damn 0
-                    self.logger.info(
-                        "=" * 20
-                        + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{desired_location}\n"
-                        + "=" * 20
-                    )
-
-                    self.block_pose = Pose()
-                    self.block_pose.position.x = desired_location[0]
-                    self.block_pose.position.y = desired_location[1]
-                    self.block_pose.position.z = 0.0
-
-                    # Yaw probably needs a negative or something, I'm not sure
-                    yaw = np.arctan2(approach_direction[0], approach_direction[1])
-                    yaw = 0.0
+                    yaw = np.arctan2(T_marker_to_robot[0], T_marker_to_robot[1])
                     quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
 
-                    self.block_pose.orientation.w = quaternion[0]
-                    self.block_pose.orientation.x = quaternion[1]
-                    self.block_pose.orientation.y = quaternion[2]
-                    self.block_pose.orientation.z = quaternion[3]
-                    self.logger.info(f"Estimated grab pose: {self.block_pose}")
+                    self.grab_pose.orientation.w = quaternion[0]
+                    self.grab_pose.orientation.x = quaternion[1]
+                    self.grab_pose.orientation.y = quaternion[2]
+                    self.grab_pose.orientation.z = quaternion[3]
+                    self.logger.info(f"Estimated grab pose: {self.grab_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
@@ -338,7 +308,7 @@ class RetrieveNode(Node):
 
             if self.state == StateMachine.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
-                self.block_pose = None
+                self.grab_pose = None
                 self.marker_location = None
                 self.logger.info(
                     f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
@@ -349,18 +319,18 @@ class RetrieveNode(Node):
                 reached = self.go_to_pose(self.request_pose) # TODO, we can't collide with the block, so this go_to_pose must be interruptable as soon as we see the block.
                 if reached:
                     self.logger.info(
-                        f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
+                        f"Reached block pose, entering FIND_GRAB_POSE state to locate block"
                     )
-                    self.state = StateMachine.FIND_BLOCK_POSE
-            elif self.state == StateMachine.FIND_BLOCK_POSE:
-                if self.block_pose is not None:
+                    self.state = StateMachine.FIND_GRAB_POSE
+            elif self.state == StateMachine.FIND_GRAB_POSE:
+                if self.grab_pose is not None:
                     self.logger.info(
                         f"Found block pose, entering POSITIONING state to orient around block"
                     )
                     self.state = StateMachine.POSITIONING
 
             elif self.state == StateMachine.POSITIONING:
-                reached = self.go_to_pose(self.block_pose)
+                reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
                         f"Reached grab pose, entering GRABBING state to grab block"
