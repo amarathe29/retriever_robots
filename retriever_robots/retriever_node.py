@@ -145,7 +145,7 @@ class RetrieveNode(Node):
                 self.state = StateMachine.NAVIGATING
 
             elif self.state == StateMachine.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose, controller=self.pose_controller_clf)
+                reached = self.go_to_pose(self.request_pose)
                 if reached or self.grab_pose is not None:
                     self.logger.info(
                         f"Reached block pose, entering FIND_GRAB_POSE state to locate block"
