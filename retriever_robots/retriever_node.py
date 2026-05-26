@@ -244,6 +244,8 @@ class RetrieveNode(Node):
                     self.state = self.return_state
                     self.return_state = None
 
+                self.vel_pub.publish(cmd)
+
             feedback_msg.curr_pose = self.curr_pose
             goal_handle.publish_feedback(feedback_msg)
 
