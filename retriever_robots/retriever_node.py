@@ -238,6 +238,8 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
+        self.logger.info(f"Using simple pose controller to go to {target_pose}")
+
         dx = target_pose.position.x - self.curr_pose.position.x
         dy = target_pose.position.y - self.curr_pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
@@ -282,6 +284,7 @@ class RetrieveNode(Node):
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
 
+        self.logger.info(f"Using CLF controller to go to {target_pose}")
         q_curr = self.curr_pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
         q_desired = target_pose.orientation
@@ -339,7 +342,7 @@ class RetrieveNode(Node):
         angle_diff = angle_wrap(angle_to_target - current_yaw)
 
         # If we haven't reached the target, return false, else we return true
-        if abs(angle_diff) > 0.1 or distance > 0.1:
+        if abs(angle_diff) > 0.04 or distance > 0.1:
             return False
 
         return True
