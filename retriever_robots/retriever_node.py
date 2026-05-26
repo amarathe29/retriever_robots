@@ -262,7 +262,8 @@ class RetrieveNode(Node):
 
         # TODO: Double-check this works with the new changes
         if abs(angle_diff) > 0.1 and distance > 0.15:
-            cmd.angular.z = angular_gain * angle_diff
+            sgn = np.sign(angle_diff)
+            cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
             if distance > 0.1:
                 sgn = np.sign(distance)
