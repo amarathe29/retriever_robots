@@ -82,6 +82,7 @@ class RetrieveNode(Node):
         self.odom = msg
         if self._start_pose is None:
             self._start_pose = self.odom.pose.pose
+            self.start_pose_set = True
 
     def visible_block_callback(self, msg: Pose) -> None:
 
