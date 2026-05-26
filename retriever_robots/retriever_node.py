@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import Twist, Pose, PoseArray
+from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
@@ -42,7 +42,7 @@ class RetrieveNode(Node):
 
         # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
         self.visible_block_sub = self.create_subscription(
-            PoseArray, f"{self.get_namespace()}/visible_blocks", self.visible_block_callback, 10
+            Pose, f"{self.get_namespace()}/visible_block", self.visible_block_callback, 10
         )
 
         # Set up publisher
@@ -85,7 +85,7 @@ class RetrieveNode(Node):
         if self._start_pose is None:
             self._start_pose = self.odom.pose.pose
 
-    def visible_block_callback(self, msg: PoseArray) -> None:
+    def visible_block_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received visible blocks: {msg}")
 
     def cam_callback(

@@ -3,9 +3,11 @@ from rclpy.node import Node
 
 import numpy as np
 from sensor_msgs.msg import Image, CameraInfo
-from geometry_msgs.msg import Twist, Pose, PoseArray
+from geometry_msgs.msg import Twist, Pose
 from cv_bridge import CvBridge
 import cv2
+
+from utils import quaternion_from_euler, create_rotation_matrix
 
 import message_filters
 
@@ -30,27 +32,15 @@ class CheckTags(Node):
 
         self.pub = self.create_publisher(Twist, "/asher/cmd_vel", 10)
 
-        self.vis_pub = self.create_publisher(PoseArray, "/asher/visible_blocks", 10)
+        # communicates the location of the identified block back to the retriever node. This is a custom topic, not a standard ROS topic, so we can change it as needed.
+        self.vis_pub = self.create_publisher(Pose, "/asher/visible_block", 10)
 
         self.camera_matrix = None
         self.distortion_coeffs = None
         self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_APRILTAG_25h9)
         self.parameters = cv2.aruco.DetectorParameters_create()
 
-        # self.cam_info = self.create_subscription(
-        #     CameraInfo,
-        #     "/asher/camera/color/camera_info",
-        #     self.camera_info_callback,
-        #     1,
-        # )
-        # self.cam = self.create_subscription(
-        #     Image,
-        #     "/asher/camera/color/image_raw",
-        #     self.image_callback,
-        #     1
-        # )
 
-        # Set up synchronizer for color and depth images
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
         )
@@ -87,8 +77,8 @@ class CheckTags(Node):
                 self.get_logger().warn("Camera info not received yet.")
                 return
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-            self.get_logger().info("Received an image.")
-
+           
+            # self.get_logger().info("Received an image.")
 
             corners, ids, _ = cv2.aruco.detectMarkers(cv_image, self.aruco_dict, parameters=self.parameters)
             if ids is not None:
@@ -102,15 +92,43 @@ class CheckTags(Node):
                         flags=cv2.SOLVEPNP_IPPE_SQUARE,
                     )
                 if ok:
-                    self.get_logger().info(f"Tag pose: rvec={rvec.flatten()}, tvec={tvec.flatten()}")
-                    # now rotate the robot to center the tag in the image
-                    p = 1
-                    T_marker_to_robot = tvec.flatten()
-                    twist = Twist()
-                    twist.angular.z = (min(max(-p * T_marker_to_robot[0], -0.4), 0.4))
-                    self.get_logger().info(f"Publishing twist: angular.z={twist.angular.z}")
+                    # TODO: check this math and ordering
 
-                    self.pub.publish(twist)
+                    # now, convert rvec and tvec into a Pose in the world frame
+                    R_marker_to_cam, _ = cv2.Rodrigues(rvec)
+                    # Image X is robot -Y, Image Y is robot -Z, Image Z is robot X
+                    R_image_to_robot_axes = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
+                    R_cam_angle_to_robot = create_rotation_matrix(pitch=-30, units='degrees')
+
+                    R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
+
+                    R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
+                    rot_vec, _ = cv2.Rodrigues(R_marker_to_robot)
+
+                    T_cam_to_robot = np.array([[-0.1], [0], [0]]) # camera is 10cm in front of the robot axis
+
+                    T_marker_to_cam = tvec.reshape(3, 1)
+                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+
+
+                    self.logger.warn(
+                        f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
+                    )
+
+                    pose = Pose()
+
+                    pose.position.x = float(T_marker_to_robot[0])
+                    pose.position.y = float(T_marker_to_robot[1])
+                    pose.position.z = float(T_marker_to_robot[2])
+
+                    q = quaternion_from_euler(float(rot_vec[0]), float(rot_vec[1]), float(rot_vec[2]))
+                    pose.orientation.x = q[1]
+                    pose.orientation.y = q[2]
+                    pose.orientation.z = q[3]
+                    pose.orientation.w = q[0]
+
+                    self.vis_pub.publish(pose)
+
 
                 else:
                     self.get_logger().error("Could not solve PnP for detected tag.")
