@@ -352,7 +352,7 @@ class RetrieveNode(Node):
         # self.logger.error(f"Gone to pose: {target_pose}")
         # return True
 
-        cmd = self.pose_controller(self.request_pose)
+        cmd = controller(self.request_pose)
         self.vel_pub.publish(cmd)
         reached = self.check_reached_target(self.request_pose)
         return reached
