@@ -3,18 +3,18 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import Twist, Pose, Quaternion
+from geometry_msgs.msg import Twist, Pose, PoseArray
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
 import message_filters
 
+from utils import euler_from_quaternion, quaternion_from_euler, create_rotation_matrix, angle_wrap
+
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from enum import Enum, auto
-import math
-
 
 class StateMachine(Enum):
     IDLE = auto()
@@ -27,69 +27,8 @@ class StateMachine(Enum):
     RECOVERY = auto()
 
 
-def euler_from_quaternion(x, y, z, w):
-    """
-    Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
-    in radians. Sequence: ZYX (Yaw, Pitch, Roll).
-    """
-    t0 = 2.0 * (w * x + y * z)
-    t1 = 1.0 - 2.0 * (x * x + y * y)
-    roll = math.atan2(t0, t1)
-
-    t2 = 2.0 * (w * y - z * x)
-    t2 = 1.0 if t2 > 1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
-
-    t3 = 2.0 * (w * z + x * y)
-    t4 = 1.0 - 2.0 * (y * y + z * z)
-    yaw = math.atan2(t3, t4)
-
-    return roll, pitch, yaw
-
-
-def quaternion_from_euler(roll, pitch, yaw):
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    q = [0.0, 0.0, 0.0, 0.0]
-    q[0] = cy * cp * cr + sy * sp * sr  # w
-    q[1] = cy * cp * sr - sy * sp * cr  # x
-    q[2] = cy * sp * cr + sy * cp * sr  # y
-    q[3] = sy * cp * cr - cy * sp * sr  # z
-
-    return q
-
-def create_rotation_matrix(roll=0, pitch=0, yaw=0, units='radians'):
-
-    if units == 'degrees':
-        roll = np.radians(roll)
-        pitch = np.radians(pitch)
-        yaw = np.radians(yaw)
-
-    R_x = np.array([[1, 0, 0],
-                    [0, np.cos(roll), -np.sin(roll)],
-                    [0, np.sin(roll), np.cos(roll)]])
-    R_y = np.array([[np.cos(pitch), 0, np.sin(pitch)],
-                    [0, 1, 0],
-                    [-np.sin(pitch), 0, np.cos(pitch)]])
-    R_z = np.array([[np.cos(yaw), -np.sin(yaw), 0],
-                    [np.sin(yaw), np.cos(yaw), 0],
-                    [0, 0, 1]])
-    R = R_z @ R_y @ R_x
-
-
-    return R
-
-
-
-
 class RetrieveNode(Node):
-    """docstring for RetrieveNode."""
+    """RetrieveNode runs the state machine for each of the retriever robots."""
 
     def __init__(self, node_name, *args):
         super(RetrieveNode, self).__init__(node_name)
@@ -101,24 +40,10 @@ class RetrieveNode(Node):
             Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
 
-        # Set up synchronizer for color and depth images
-        self.color_sub = message_filters.Subscriber(
-            self, Image, f"{self.get_namespace()}/camera/color/image_raw"
+        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
+        self.visible_block_sub = self.create_subscription(
+            PoseArray, f"{self.get_namespace()}/visible_blocks", self.visible_block_callback, 10
         )
-        self.color_info = message_filters.Subscriber(
-            self,
-            CameraInfo,
-            f"{self.get_namespace()}/camera/color/camera_info",
-        )
-
-        queue_size = 1
-        slop = 0.2
-
-        self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.color_sub, self.color_info], queue_size, slop
-        )
-
-        self.ts.registerCallback(self.cam_callback)
 
         # Set up publisher
         self.vel_pub = self.create_publisher(
@@ -132,15 +57,6 @@ class RetrieveNode(Node):
             f"{self.get_namespace()}/gotoblock",
             self.retrieve_callback,
         )
-
-        # AprilTag recognition stuff
-        ARUCO_TAG = cv2.aruco.DICT_APRILTAG_25h9
-        self.aruco_dict = cv2.aruco.Dictionary_get(ARUCO_TAG)
-        self.aruco_parameters = cv2.aruco.DetectorParameters_create()
-
-        self.bridge = CvBridge()
-        self.camera_matrix = None
-        self.distortion_coeffs = None
 
         # Save the logger in ros1 style syntax, because wtf is with the self.get_logger() BS
         self.logger = self.get_logger()
@@ -168,6 +84,9 @@ class RetrieveNode(Node):
         self.odom = msg
         if self._start_pose is None:
             self._start_pose = self.odom.pose.pose
+
+    def visible_block_callback(self, msg: PoseArray) -> None:
+        self.logger.debug(f"Received visible blocks: {msg}")
 
     def cam_callback(
         self, color_msg: Image, color_info: CameraInfo
@@ -290,6 +209,8 @@ class RetrieveNode(Node):
                     self.logger.info(f"Estimated grab pose: {self.grab_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
+        """action handler for the retrieve action server"""
+
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
         if self.state != StateMachine.IDLE:
             self.logger.error(f"Already running an action")
@@ -386,9 +307,7 @@ class RetrieveNode(Node):
         # add gracefull returning to idle and the idle position here
         return result
 
-    def angle_wrap(self, angle: float) -> float:
-        wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
-        return wrapped
+
 
     def pose_controller(self, target_pose: Pose) -> Twist:
 
@@ -404,12 +323,12 @@ class RetrieveNode(Node):
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
-        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
+        angle_diff = angle_wrap(angle_to_target - current_yaw)
         q_desired = target_pose.orientation
         _, _, desired_yaw = euler_from_quaternion(
             q_desired.x, q_desired.y, q_desired.z, q_desired.w
         )
-        desired_yaw_diff = self.angle_wrap(desired_yaw - current_yaw)
+        desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
 
         cmd = Twist()
         linear_gain = 0.3  # Arbitrary gain cause why not
@@ -466,7 +385,7 @@ class RetrieveNode(Node):
         theta_error_vec = np.arctan2(position_error[1], position_error[0])
 
         alpha = theta_error_vec - (theta - desired_theta)
-        alpha = self.angle_wrap(alpha)
+        alpha = angle_wrap(alpha)
 
         ca = np.cos(alpha)
         sa = np.sin(alpha)
@@ -494,7 +413,7 @@ class RetrieveNode(Node):
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
-        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
+        angle_diff = angle_wrap(angle_to_target - current_yaw)
 
         # If we haven't reached the target, return false, else we return true
         if abs(angle_diff) > 0.1 or distance > 0.1:
