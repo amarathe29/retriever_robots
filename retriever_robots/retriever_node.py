@@ -197,7 +197,7 @@ class RetrieveNode(Node):
             gray, self.aruco_dict, parameters=self.aruco_parameters
         )
 
-        self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
+        self.logger.info(f"Detected {len(ids) if ids is not None else 0} ArUco marker(s)")
 
 
         if ids is not None:
