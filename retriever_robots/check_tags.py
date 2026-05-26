@@ -96,7 +96,7 @@ class CheckTags(Node):
                 self.get_logger().warn(f"Found {len(ids)} tags: {ids.flatten()}")
                 ok, rvec, tvec = cv2.solvePnP(
                         OBJ_PTS,
-                        corners,
+                        corners[0][0],
                         self.camera_matrix,
                         self.distortion_coeffs,
                         flags=cv2.SOLVEPNP_IPPE_SQUARE,
