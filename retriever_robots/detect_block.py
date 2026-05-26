@@ -7,7 +7,9 @@ from geometry_msgs.msg import Twist, Pose
 from cv_bridge import CvBridge
 import cv2
 
-from retriever_robots.utils import quaternion_from_euler, create_rotation_matrix
+from retriever_robots.utils import create_rotation_matrix
+
+from retriever_msgs.msg import PoseStatus
 
 import message_filters
 
@@ -33,7 +35,7 @@ class DetectBlock(Node):
         self.pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
 
         # communicates the location of the identified block back to the retriever node. This is a custom topic, not a standard ROS topic, so we can change it as needed.
-        self.vis_pub = self.create_publisher(Pose, f"{self.get_namespace()}/visible_block", 10)
+        self.vis_pub = self.create_publisher(PoseStatus, f"{self.get_namespace()}/visible_block", 10)
 
         self.camera_matrix = None
         self.distortion_coeffs = None
@@ -74,6 +76,7 @@ class DetectBlock(Node):
         self.distortion_coeffs = np.array(msg.d)
 
     def image_callback(self, msg):
+        pose_status = PoseStatus()
         try:
             if self.camera_matrix is None or self.distortion_coeffs is None:
                 self.logger.warn("Camera info not received yet.")
@@ -92,7 +95,6 @@ class DetectBlock(Node):
                         flags=cv2.SOLVEPNP_IPPE_SQUARE,
                     )
                 if ok:
-                    # TODO: this math is wrong...
 
                     # now, convert rvec and tvec into a Pose in the world frame
                     R_marker_to_cam, _ = cv2.Rodrigues(rvec)
@@ -114,9 +116,6 @@ class DetectBlock(Node):
                     T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
 
 
-                    self.logger.warn(f"Validation Vector: {R_cam_to_robot @ np.array([[0], [0], [1]])}. Should be close to {[np.cos(np.radians(30)), 0, -np.sin(np.radians(30))]}")
-
-
                     self.logger.warn(
                         f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
                     )
@@ -134,11 +133,18 @@ class DetectBlock(Node):
                     pose.orientation.z = z
                     pose.orientation.w = w
 
-                    self.vis_pub.publish(pose)
+                    pose_status.in_frame = True
+                    pose_status.pose = pose
 
 
                 else:
                     self.logger.error("Could not solve PnP for detected tag.")
+                    pose_status.in_frame = False # partial tag detected?
+            else:
+                pose_status.in_frame = False # no tags detected
+
+
+            self.vis_pub.publish(pose_status)
 
         except Exception as e:
             self.logger.error(f"Error converting image: {e}")
