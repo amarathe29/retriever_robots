@@ -356,9 +356,9 @@ class RetrieveNode(Node):
         if controller is None:
             controller = self.pose_controller
 
-        cmd = controller(self.request_pose)
+        cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
-        reached = self.check_reached_target(self.request_pose)
+        reached = self.check_reached_target(target_pose)
         return reached
 
     @property
