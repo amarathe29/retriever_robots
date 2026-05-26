@@ -27,8 +27,6 @@ class CheckTags(Node):
     def __init__(self):
         super().__init__("check_tags")
         self.bridge = CvBridge()
-        self.get_logger().info("CheckTags node has been started.")
-
 
         self.pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
 
@@ -59,6 +57,8 @@ class CheckTags(Node):
 
         self.ts.registerCallback(self.cam_callback)
 
+        self.logger = self.get_logger()
+        self.logger.info(f"Launched Block Detection Node for {self.get_namespace()}")
 
 
     def cam_callback(self, img_msg, cam_info_msg):
@@ -74,14 +74,14 @@ class CheckTags(Node):
     def image_callback(self, msg):
         try:
             if self.camera_matrix is None or self.distortion_coeffs is None:
-                self.get_logger().warn("Camera info not received yet.")
+                self.logger.warn("Camera info not received yet.")
                 return
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
            
             corners, ids, _ = cv2.aruco.detectMarkers(cv_image, self.aruco_dict, parameters=self.parameters)
             if ids is not None:
 
-                self.get_logger().warn(f"Found {len(ids)} tags: {ids.flatten()}")
+                self.logger.warn(f"Found {len(ids)} tags: {ids.flatten()}")
                 ok, rvec, tvec = cv2.solvePnP(
                         OBJ_PTS,
                         corners[0][0],
@@ -129,10 +129,10 @@ class CheckTags(Node):
 
 
                 else:
-                    self.get_logger().error("Could not solve PnP for detected tag.")
+                    self.logger.error("Could not solve PnP for detected tag.")
 
         except Exception as e:
-            self.get_logger().error(f"Error converting image: {e}")
+            self.logger.error(f"Error converting image: {e}")
 
 
 def main(args=None):
