@@ -86,6 +86,15 @@ class RetrieveNode(Node):
     def visible_block_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received visible blocks: {msg}")
 
+        # TODO: We need to use the location of the block to update our state machine:
+        # if we're in find_block_pose, we can do easy math in one reference frame to get the grab pose.
+
+        # if we're navigating, we want to interrupt navigation and immediately catch the block.
+
+        # if we're grabbing, we can just check the position of the block within an envelope
+
+        # if we're stockpiling, we want to catch if we lose sight of the block...we may need a custom message here with a bool...
+
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         """action handler for the retrieve action server"""
@@ -185,7 +194,6 @@ class RetrieveNode(Node):
         result.end_pose = self.curr_pose
         # add gracefull returning to idle and the idle position here
         return result
-
 
 
     def pose_controller(self, target_pose: Pose) -> Twist:

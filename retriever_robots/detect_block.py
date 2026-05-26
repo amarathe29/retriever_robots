@@ -11,6 +11,8 @@ from retriever_robots.utils import quaternion_from_euler, create_rotation_matrix
 
 import message_filters
 
+from scipy.spatial.transform import Rotation
+
 
 MARKER_SIZE = 0.0544
 OBJ_PTS = np.array(
@@ -23,9 +25,9 @@ OBJ_PTS = np.array(
     dtype=np.float64,
 )
 
-class CheckTags(Node):
-    def __init__(self):
-        super().__init__("check_tags")
+class DetectBlock(Node):
+    def __init__(self, node_name):
+        super().__init__(node_name)
         self.bridge = CvBridge()
 
         self.pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
@@ -90,23 +92,29 @@ class CheckTags(Node):
                         flags=cv2.SOLVEPNP_IPPE_SQUARE,
                     )
                 if ok:
-                    # TODO: check this math and ordering
+                    # TODO: this math is wrong...
 
                     # now, convert rvec and tvec into a Pose in the world frame
                     R_marker_to_cam, _ = cv2.Rodrigues(rvec)
                     # Image X is robot -Y, Image Y is robot -Z, Image Z is robot X
-                    R_image_to_robot_axes = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
-                    R_cam_angle_to_robot = create_rotation_matrix(pitch=-30, units='degrees')
+                    R_image_to_robot_axes = np.array(
+                        [[0, 0, 1], 
+                         [-1, 0, 0], 
+                         [0, -1, 0],]
+                    )
+                    R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units='degrees')
 
                     R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
 
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-                    rot_vec, _ = cv2.Rodrigues(R_marker_to_robot)
 
                     T_cam_to_robot = np.array([[-0.1], [0], [0]]) # camera is 10cm in front of the robot axis
 
                     T_marker_to_cam = tvec.reshape(3, 1)
                     T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+
+
+                    self.logger.warn(f"Validation Vector: {R_cam_to_robot @ np.array([[0], [0], [1]])}. Should be close to {[np.cos(np.radians(30)), 0, -np.sin(np.radians(30))]}")
 
 
                     self.logger.warn(
@@ -119,11 +127,12 @@ class CheckTags(Node):
                     pose.position.y = float(T_marker_to_robot[1])
                     pose.position.z = float(T_marker_to_robot[2])
 
-                    q = quaternion_from_euler(float(rot_vec[0]), float(rot_vec[1]), float(rot_vec[2]))
-                    pose.orientation.x = q[1]
-                    pose.orientation.y = q[2]
-                    pose.orientation.z = q[3]
-                    pose.orientation.w = q[0]
+
+                    w,x,y,z = Rotation.from_matrix(R_marker_to_robot).as_quat()
+                    pose.orientation.x = x
+                    pose.orientation.y = y
+                    pose.orientation.z = z
+                    pose.orientation.w = w
 
                     self.vis_pub.publish(pose)
 
@@ -137,7 +146,7 @@ class CheckTags(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = CheckTags()
+    node = DetectBlock("detect_block")
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
