@@ -347,10 +347,13 @@ class RetrieveNode(Node):
 
         return True
 
-    def go_to_pose(self, target_pose: Pose, controller=pose_controller) -> bool:
+    def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
         # for now, just pretend we went there
         # self.logger.error(f"Gone to pose: {target_pose}")
         # return True
+
+        if controller is None:
+            controller = self.pose_controller
 
         cmd = controller(self.request_pose)
         self.vel_pub.publish(cmd)
