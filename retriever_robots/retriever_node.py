@@ -95,19 +95,19 @@ class RetrieveNode(Node):
         self.visible_count = 0
         self.block_pose = msg.position
 
-        if self.state in [StateMachine.NAVIGATING, StateMachine.FIND_GRAB_POSE]:
+        if self.state in [StateMachine.NAVIGATING, StateMachine.FIND_GRAB_POSE, StateMachine.RECOVERY]:
             
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
             # should be colinear the orientation of the block. 
             _,_,yaw = euler_from_quaternion(msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w)
 
             positioning_distance = 0.3
-
             self.grab_pose = Pose()
             self.grab_pose.position.x = self.block_pose.x - positioning_distance * np.cos(yaw)
             self.grab_pose.position.y = self.block_pose.y - positioning_distance * np.sin(yaw)
             self.grab_pose.position.z = self.block_pose.z
             self.grab_pose.orientation = msg.orientation
+            self.logger.info(f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}")
 
         # TODO: We need to use the location of the block to update our state machine:
 
@@ -145,7 +145,7 @@ class RetrieveNode(Node):
                 self.state = StateMachine.NAVIGATING
 
             elif self.state == StateMachine.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose)
+                reached = self.go_to_pose(self.request_pose, controller=self.pose_controller_clf)
                 if reached or self.grab_pose is not None:
                     self.logger.info(
                         f"Reached block pose, entering FIND_GRAB_POSE state to locate block"
@@ -159,10 +159,10 @@ class RetrieveNode(Node):
                     self.state = StateMachine.POSITIONING
                 else:
                     # TODO: do a cool spiral search outward
-                    self.logger.info(
-                        f"Block not found, searching nearby"
-                    )
-
+                    self.state = StateMachine.RECOVERY
+                    # self.logger.info(
+                    #     f"Block not found, searching nearby"
+                    # )
             elif self.state == StateMachine.POSITIONING:
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
@@ -210,6 +210,16 @@ class RetrieveNode(Node):
 
             elif self.state == StateMachine.RECOVERY:
                 # TODO: Add some kind of recovery behavior
+                if self.grab_pose is not None:
+                    self.logger.info(
+                        f"Attempting to recover by going to grab pose {self.grab_pose}"
+                    )
+                    reached = self.go_to_pose(self.grab_pose)
+                    if reached:
+                        self.logger.info(
+                            f"Reached grab pose, entering POSITIONING state to orient around block"
+                        )
+                        self.state = StateMachine.POSITIONING
                 pass
 
             feedback_msg.curr_pose = self.curr_pose
@@ -336,8 +346,8 @@ class RetrieveNode(Node):
 
     def go_to_pose(self, target_pose: Pose, controller=pose_controller) -> bool:
         # for now, just pretend we went there
-        self.logger.error(f"Gone to pose: {target_pose}")
-        return True
+        # self.logger.error(f"Gone to pose: {target_pose}")
+        # return True
 
         cmd = self.pose_controller(self.request_pose)
         self.vel_pub.publish(cmd)
