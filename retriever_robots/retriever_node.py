@@ -20,7 +20,7 @@ class StateMachine(Enum):
     IDLE = auto()
     NAVIGATING = auto()
     FIND_BLOCK_POSE = auto()
-    REACH_BLOCK = auto()
+    POSITIONING = auto()
     GRABBING = auto()
     STOCKPILING = auto()
     RETURNING = auto()
@@ -154,7 +154,7 @@ class RetrieveNode(Node):
         self.start_pose_set = False
         self._start_pose = None
         self.request_pose = None
-        self.grab_pose = None
+        self.block_pose = None
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -192,16 +192,17 @@ class RetrieveNode(Node):
             self.logger.error(f"Error in decoding images from camera: {e}")
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        try:
-            height, width = gray.shape
-        except Exception as e:
-            self.logger.error(f"unable to get height and width from grayscale image")
+        
         corners, ids, _ = cv2.aruco.detectMarkers(
             gray, self.aruco_dict, parameters=self.aruco_parameters
         )
+
+        self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
+
+
         if ids is not None:
 
-            self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
+            # self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
             marker_corners = corners[0][0]
             self.logger.info(
                 f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}"
@@ -209,7 +210,7 @@ class RetrieveNode(Node):
             self.logger.info(f"State Machine State: {self.state.name.lower()}")
 
             if (self.state == StateMachine.FIND_BLOCK_POSE):
-                if (self.grab_pose is None):
+                if (self.block_pose is None):
 
                     self.logger.info(f"Searching for block")
 
@@ -302,21 +303,21 @@ class RetrieveNode(Node):
                         + "=" * 20
                     )
 
-                    self.grab_pose = Pose()
-                    self.grab_pose.position.x = desired_location[0]
-                    self.grab_pose.position.y = desired_location[1]
-                    self.grab_pose.position.z = 0.0
+                    self.block_pose = Pose()
+                    self.block_pose.position.x = desired_location[0]
+                    self.block_pose.position.y = desired_location[1]
+                    self.block_pose.position.z = 0.0
 
                     # Yaw probably needs a negative or something, I'm not sure
                     yaw = np.arctan2(approach_direction[0], approach_direction[1])
                     yaw = 0.0
                     quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
 
-                    self.grab_pose.orientation.w = quaternion[0]
-                    self.grab_pose.orientation.x = quaternion[1]
-                    self.grab_pose.orientation.y = quaternion[2]
-                    self.grab_pose.orientation.z = quaternion[3]
-                    self.logger.info(f"Estimated grab pose: {self.grab_pose}")
+                    self.block_pose.orientation.w = quaternion[0]
+                    self.block_pose.orientation.x = quaternion[1]
+                    self.block_pose.orientation.y = quaternion[2]
+                    self.block_pose.orientation.z = quaternion[3]
+                    self.logger.info(f"Estimated grab pose: {self.block_pose}")
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
@@ -337,7 +338,7 @@ class RetrieveNode(Node):
 
             if self.state == StateMachine.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
-                self.grab_pose = None
+                self.block_pose = None
                 self.marker_location = None
                 self.logger.info(
                     f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
@@ -345,21 +346,21 @@ class RetrieveNode(Node):
                 self.state = StateMachine.NAVIGATING
 
             elif self.state == StateMachine.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose)
+                reached = self.go_to_pose(self.request_pose) # TODO, we can't collide with the block, so this go_to_pose must be interruptable as soon as we see the block.
                 if reached:
                     self.logger.info(
                         f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
                     )
                     self.state = StateMachine.FIND_BLOCK_POSE
             elif self.state == StateMachine.FIND_BLOCK_POSE:
-                if self.grab_pose is not None:
+                if self.block_pose is not None:
                     self.logger.info(
-                        f"Found block pose, entering REACH_BLOCK state to orient around block"
+                        f"Found block pose, entering POSITIONING state to orient around block"
                     )
-                    self.state = StateMachine.REACH_BLOCK
+                    self.state = StateMachine.POSITIONING
 
-            elif self.state == StateMachine.REACH_BLOCK:
-                reached = self.go_to_pose(self.grab_pose)
+            elif self.state == StateMachine.POSITIONING:
+                reached = self.go_to_pose(self.block_pose)
                 if reached:
                     self.logger.info(
                         f"Reached grab pose, entering GRABBING state to grab block"
