@@ -111,7 +111,7 @@ class RetrieveNode(Node):
             f"{self.get_namespace()}/camera/color/camera_info",
         )
 
-        queue_size = 2
+        queue_size = 1
         slop = 0.2
 
         self.ts = message_filters.ApproximateTimeSynchronizer(
@@ -146,7 +146,7 @@ class RetrieveNode(Node):
         self.logger = self.get_logger()
         self.logger.info(f"Launched Retrieve Node for {self.get_namespace()}")
 
-        self.marker_size = 0.07
+        self.marker_size = 0.0544
 
         self.state = StateMachine.IDLE
         self.pose = None
@@ -276,7 +276,7 @@ class RetrieveNode(Node):
 
                     desired_dist = 0.1
                     # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
-                    approach_direction = -np.sign(np.dot(marker_x_robot, T_marker_to_robot))
+                    approach_direction = -np.sign(np.dot(marker_x_robot.flatten(), T_marker_to_robot.flatten()))
                     approach_direction /= np.linalg.norm(approach_direction)
 
                     # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
