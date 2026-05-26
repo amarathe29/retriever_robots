@@ -86,7 +86,7 @@ class DetectBlock(Node):
             corners, ids, _ = cv2.aruco.detectMarkers(cv_image, self.aruco_dict, parameters=self.parameters)
             if ids is not None:
 
-                self.logger.warn(f"Found {len(ids)} tags: {ids.flatten()}")
+                self.logger.debug(f"Found {len(ids)} tags: {ids.flatten()}")
                 ok, rvec, tvec = cv2.solvePnP(
                         OBJ_PTS,
                         corners[0][0],
@@ -116,7 +116,7 @@ class DetectBlock(Node):
                     T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
 
 
-                    self.logger.warn(
+                    self.logger.debug(
                         f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
                     )
 

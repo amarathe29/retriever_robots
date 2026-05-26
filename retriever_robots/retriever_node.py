@@ -105,7 +105,7 @@ class RetrieveNode(Node):
             self.grab_pose = Pose()
             self.grab_pose.position.x = self.block_pose.position.x - positioning_distance * np.cos(yaw)
             self.grab_pose.position.y = self.block_pose.position.y - positioning_distance * np.sin(yaw)
-            self.grab_pose.position.z = self.block_pose.z
+            self.grab_pose.position.z = self.block_pose.position.z
             self.grab_pose.orientation = msg.orientation
             self.logger.info(f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}")
 
