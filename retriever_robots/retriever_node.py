@@ -268,7 +268,7 @@ class RetrieveNode(Node):
                     marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
                     marker_x_robot[2] = 0.0
                     T_marker_to_cam = tvec.reshape(3, 1)
-                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+                    T_marker_to_robot = T_marker_to_cam @ R_cam_to_robot + T_cam_to_robot
 
                     self.logger.warn(
                         f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
@@ -276,7 +276,7 @@ class RetrieveNode(Node):
 
                     desired_dist = 0.1
                     # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
-                    approach_direction = -np.sign(np.dot(marker_x_robot.flatten(), T_marker_to_robot.flatten()))
+                    approach_direction = -np.sign(np.dot(marker_x_robot.flatten(), T_marker_to_robot.flatten())) * marker_x_robot.flatten()
                     approach_direction /= np.linalg.norm(approach_direction)
 
                     # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
