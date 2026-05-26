@@ -265,10 +265,12 @@ class RetrieveNode(Node):
             cmd.angular.z = angular_gain * angle_diff
         else:
             if distance > 0.1:
-                cmd.linear.x = linear_gain * distance
+                sgn = np.sign(distance)
+                cmd.linear.x = sgn* max(min(linear_gain * distance, 0.2), 0.05)
             else:
                 if abs(desired_yaw_diff) > 0.1:
-                    cmd.angular.z = angular_gain * desired_yaw_diff
+                    sgn = np.sign(desired_yaw_diff)
+                    cmd.angular.z = sgn * max(min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05)
                 else:
                     return Twist()
 
@@ -321,7 +323,7 @@ class RetrieveNode(Node):
 
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        w = -k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
