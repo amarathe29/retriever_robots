@@ -77,6 +77,7 @@ class DetectBlock(Node):
 
     def image_callback(self, msg):
         pose_status = PoseStatus()
+        pose_status.tag_in_frame = False
         try:
             if self.camera_matrix is None or self.distortion_coeffs is None:
                 self.logger.warn("Camera info not received yet.")
@@ -133,15 +134,25 @@ class DetectBlock(Node):
                     pose.orientation.z = z
                     pose.orientation.w = w
 
-                    pose_status.in_frame = True
+                    pose_status.tag_in_frame = True
                     pose_status.pose = pose
 
 
                 else:
                     self.logger.error("Could not solve PnP for detected tag.")
-                    pose_status.in_frame = False # partial tag detected?
+
             else:
-                pose_status.in_frame = False # no tags detected
+                self.logger.error("No tags detected in the image.")
+
+            if not pose_status.tag_in_frame:    
+                pose_status.block_in_frame, x,y = self.segment_color(cv_image) # if no tags are detected, try to segment based on color as a fallback
+                if pose_status.block_in_frame:
+                    # create a fake pose with a y position scaled based on the negative x value of the image. Make a rough x pose based on y in frame
+                    pose_status.pose.position.x = 0.5 + max(min(-0.001 * (y - cv_image.shape[0] / 2), 0.5), -0.5)
+                    pose_status.pose.position.y = max(min(-0.001 * (x - cv_image.shape[1] / 2), 0.5), -0.5)
+                    pose_status.pose.position.z = 0.0
+                    pose_status.pose.orientation.w = 1.0
+                    self.logger.warn(f"Tag not detected, using color segmentation. Estimated pose: ({pose_status.pose.position.x}, {pose_status.pose.position.y}, {pose_status.pose.position.z})")
 
 
             self.vis_pub.publish(pose_status)
@@ -149,6 +160,31 @@ class DetectBlock(Node):
         except Exception as e:
             self.logger.error(f"Error converting image: {e}")
 
+
+    def segment_color(self, cv_image):
+        # Convert the image to HSV color space for better color segmentation
+        hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+
+        # Define the lower and upper bounds for the block's color in HSV space
+        # do orange instead
+        lower_color = np.array([15, 100, 100])  # lower bound (orange color)
+        upper_color = np.array([35, 255, 255])  # Example upper
+
+        # Create a mask using the defined color bounds
+        mask = cv2.inRange(hsv_image, lower_color, upper_color)
+
+        # Find contours in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            M = cv2.moments(largest_contour)
+            if M["m00"] > 50:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                self.logger.debug(f"Segmented block at pixel coordinates: ({cX}, {cY})")
+                return True, cX, cY
+        return False, None, None
 
 def main(args=None):
     rclpy.init(args=args)
