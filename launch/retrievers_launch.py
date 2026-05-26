@@ -35,7 +35,7 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", "info"],
             ),
             Node(
-                package="detect_block",
+                package="retriever_robots",
                 executable="detect_block",
                 name="detect_block",
                 namespace=namespace,
