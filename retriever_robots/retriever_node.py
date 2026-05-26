@@ -86,7 +86,7 @@ class RetrieveNode(Node):
 
     def visible_block_callback(self, msg: Pose) -> None:
 
-        if not msg.in_frame:
+        if not msg.tag_in_frame:
             self.visible_count += 1
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
