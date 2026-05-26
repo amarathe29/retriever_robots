@@ -35,6 +35,14 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", "info"],
             ),
             Node(
+                package="detect_block",
+                executable="detect_block",
+                name="detect_block",
+                namespace=namespace,
+                output="screen",
+                arguments=["--ros-args", "--log-level", "info"],
+            ),
+            Node(
                 package="rosaria2",
                 executable="rosaria2_debug",
                 name="rosaria2_node",

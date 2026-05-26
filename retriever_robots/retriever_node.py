@@ -5,12 +5,11 @@ from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Image, CameraInfo
 from retriever_msgs.action import GoToBlock  # type: ignore
+from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import euler_from_quaternion, quaternion_from_euler, create_rotation_matrix, angle_wrap
+from retriever_robots.utils import euler_from_quaternion, angle_wrap
 
-import cv2
 import numpy as np
 from enum import Enum, auto
 
@@ -40,7 +39,7 @@ class RetrieveNode(Node):
 
         # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
         self.visible_block_sub = self.create_subscription(
-            Pose, f"{self.get_namespace()}/visible_block", self.visible_block_callback, 10
+            PoseStatus, f"{self.get_namespace()}/visible_block", self.visible_block_callback, 10
         )
 
         # Set up publisher
@@ -69,6 +68,7 @@ class RetrieveNode(Node):
         self._start_pose = None
         self.request_pose = None
         self.grab_pose = None
+        self.visible_count = 0
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -84,12 +84,32 @@ class RetrieveNode(Node):
             self._start_pose = self.odom.pose.pose
 
     def visible_block_callback(self, msg: Pose) -> None:
-        self.logger.debug(f"Received visible blocks: {msg}")
+
+        if not msg.in_frame:
+            self.visible_count += 1
+            if self.visible_count > 10:
+                # acts as some hysteresis for losing the block at 30 fps
+                if self.state in [StateMachine.GRABBING, StateMachine.STOCKPILING]:
+                    self.logger.warning("No block visible")
+            return
+        self.visible_count = 0
+        self.block_pose = msg.position
+
+        if self.state in [StateMachine.NAVIGATING, StateMachine.FIND_GRAB_POSE]:
+            
+            # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
+            # should be colinear the orientation of the block. 
+            _,_,yaw = euler_from_quaternion(msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w)
+
+            positioning_distance = 0.3
+
+            self.grab_pose = Pose()
+            self.grab_pose.position.x = self.block_pose.x - positioning_distance * np.cos(yaw)
+            self.grab_pose.position.y = self.block_pose.y - positioning_distance * np.sin(yaw)
+            self.grab_pose.position.z = self.block_pose.z
+            self.grab_pose.orientation = msg.orientation
 
         # TODO: We need to use the location of the block to update our state machine:
-        # if we're in find_block_pose, we can do easy math in one reference frame to get the grab pose.
-
-        # if we're navigating, we want to interrupt navigation and immediately catch the block.
 
         # if we're grabbing, we can just check the position of the block within an envelope
 
@@ -125,8 +145,8 @@ class RetrieveNode(Node):
                 self.state = StateMachine.NAVIGATING
 
             elif self.state == StateMachine.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose) # TODO, we can't collide with the block, so this go_to_pose must be interruptable as soon as we see the block.
-                if reached:
+                reached = self.go_to_pose(self.request_pose)
+                if reached or self.grab_pose is not None:
                     self.logger.info(
                         f"Reached block pose, entering FIND_GRAB_POSE state to locate block"
                     )
@@ -137,6 +157,11 @@ class RetrieveNode(Node):
                         f"Found block pose, entering POSITIONING state to orient around block"
                     )
                     self.state = StateMachine.POSITIONING
+                else:
+                    # TODO: do a cool spiral search outward
+                    self.logger.info(
+                        f"Block not found, searching nearby"
+                    )
 
             elif self.state == StateMachine.POSITIONING:
                 reached = self.go_to_pose(self.grab_pose)
@@ -147,12 +172,13 @@ class RetrieveNode(Node):
                     self.state = StateMachine.GRABBING
 
             elif self.state == StateMachine.GRABBING:
-                # TODO: This should approach and capture the block
-                self.logger.info(
-                    f"Grabbed block, entering STOCKPILING state to stockpile block"
-                )
-                self.state = StateMachine.STOCKPILING
-                pass
+                # super naive, I'd rather put an bound on block position here
+                reached = self.go_to_pose(self.block_pose)
+                if reached:
+                    self.logger.info(
+                        f"Grabbed block, entering STOCKPILING state to stockpile block"
+                    )
+                    self.state = StateMachine.STOCKPILING
 
             elif self.state == StateMachine.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
