@@ -134,7 +134,7 @@ class DetectBlock(Node):
                     pose.orientation.w = w
 
                     pose_status.in_frame = True
-                    pose_status.position = pose
+                    pose_status.pose = pose
 
 
                 else:

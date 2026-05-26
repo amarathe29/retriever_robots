@@ -93,18 +93,18 @@ class RetrieveNode(Node):
                     self.logger.warning("No block visible")
             return
         self.visible_count = 0
-        self.block_pose = msg.position
+        self.block_pose = msg.pose
 
         if self.state in [StateMachine.NAVIGATING, StateMachine.FIND_GRAB_POSE, StateMachine.RECOVERY]:
             
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
             # should be colinear the orientation of the block. 
-            _,_,yaw = euler_from_quaternion(msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w)
+            _,_,yaw = euler_from_quaternion(msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w)
 
             positioning_distance = 0.3
             self.grab_pose = Pose()
-            self.grab_pose.position.x = self.block_pose.x - positioning_distance * np.cos(yaw)
-            self.grab_pose.position.y = self.block_pose.y - positioning_distance * np.sin(yaw)
+            self.grab_pose.position.x = self.block_pose.position.x - positioning_distance * np.cos(yaw)
+            self.grab_pose.position.y = self.block_pose.position.y - positioning_distance * np.sin(yaw)
             self.grab_pose.position.z = self.block_pose.z
             self.grab_pose.orientation = msg.orientation
             self.logger.info(f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}")
