@@ -96,6 +96,7 @@ class RetrieveNode(Node):
             self.grab_pose = None
             self.block_pose = None
             if self.state in [State.RECOVERY]:
+                self.logger.info(f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})", throttle_duration_sec=1.0 )
                 self.recovery_pose = msg.pose
             return
 
@@ -252,7 +253,7 @@ class RetrieveNode(Node):
 
                 if self.recovery_pose is None or self.recovery_pose == Pose():
                     self.logger.warning("No recovery pose available, spinning robot", throttle_duration_sec=5.0)
-                    cmd.angular.z = 0.1
+                    cmd.angular.z = 0.2
                     self.vel_pub.publish(cmd)
                     continue
 
