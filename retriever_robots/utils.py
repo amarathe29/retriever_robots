@@ -12,7 +12,7 @@ def euler_from_quaternion(x, y, z, w):
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: XYZ (Roll, Pitch, Yaw).
     """
-    return Rotation.from_quat([x, y, z, w]).as_euler()
+    return Rotation.from_quat([x, y, z, w]).as_euler('xyz')
 
 
 def mult_quat_msgs(q1,q2):
