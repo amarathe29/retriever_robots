@@ -376,7 +376,7 @@ class RetrieveNode(Node):
 
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = -k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
