@@ -107,14 +107,14 @@ class DetectBlock(Node):
                     )
                     R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units='degrees')
 
-                    R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
+                    R_cam_to_robot =  R_image_to_robot_axes @ R_cam_angle_to_robot
 
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
 
                     T_cam_to_robot = np.array([[-0.1], [0], [0]]) # camera is 10cm in front of the robot axis
 
-                    T_marker_to_cam = tvec.reshape(3, 1)
-                    T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
+                    T_marker_in_cam = tvec.reshape(3, 1)
+                    T_marker_to_robot = R_cam_to_robot @ T_marker_in_cam + T_cam_to_robot
 
 
                     self.logger.debug(

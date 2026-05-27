@@ -199,6 +199,7 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
+                continue
                 if self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
