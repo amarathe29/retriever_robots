@@ -212,7 +212,7 @@ class RetrieveNode(Node):
 
             elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
-                reached = self.go_to_pose(self.block_pose)
+                reached = self.go_to_pose(self.block_pose, controller=self.pose_controller_clf_constrained)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
@@ -345,9 +345,12 @@ class RetrieveNode(Node):
     def pose_controller_reverse(self, target_pose: Pose) -> Twist:
         pass
 
+    def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
+        return self.pose_controller_clf(target_pose, forward_constraint=True)
+
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
-    def pose_controller_clf(self, target_pose: Pose, gamma=0.5, k=2.0, h=0.3) -> Twist:
+    def pose_controller_clf(self, target_pose: Pose, gamma=0.5, k=2.0, h=0.3, forward_constraint=False) -> Twist:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
@@ -385,7 +388,8 @@ class RetrieveNode(Node):
         sa = np.sin(alpha)
 
         v = gamma * e * ca
-        v = max(0.0, v)
+        if forward_constraint:
+            v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
         w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)            
