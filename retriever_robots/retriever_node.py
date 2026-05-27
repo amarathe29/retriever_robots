@@ -352,7 +352,7 @@ class RetrieveNode(Node):
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
 
-        self.logger.info(f"Using CLF controller to go to {target_pose}", throttle_duration_sec=5.0)
+        self.logger.info(f"Using CLF controller to go to {target_pose}, from {self.curr_pose}", throttle_duration_sec=5.0)
         q_curr = self.curr_pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
         q_desired = target_pose.orientation
@@ -385,10 +385,11 @@ class RetrieveNode(Node):
         sa = np.sin(alpha)
 
         v = gamma * e * ca
-
+        v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)            
+
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
