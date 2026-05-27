@@ -112,6 +112,7 @@ class RetrieveNode(Node):
         if self.state in [
             StateMachine.NAVIGATING,
             StateMachine.FIND_GRAB_POSE,
+            StateMachine.RECOVERY,
         ]:
 
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
@@ -176,16 +177,28 @@ class RetrieveNode(Node):
             elif self.state == StateMachine.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
                 if self.grab_pose is not None:
+                    self.logger.info(
+                        f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
+                    )
                     self.state = StateMachine.POSITIONING
                 if reached and self.grab_pose is None:
+                    self.logger.info(
+                        f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
+                    )
                     self.return_state = StateMachine.POSITIONING
                     self.state = StateMachine.RECOVERY
 
             elif self.state == StateMachine.POSITIONING:
+                if self.grab_pose is None:
+                    self.logger.info(
+                        f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
+                    )
+                    self.return_state = StateMachine.POSITIONING
+                    self.state = StateMachine.RECOVERY
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
-                        f"Reached grab pose, entering GRABBING state to grab block"
+                        f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
                     )
                     self.state = StateMachine.GRABBING
 
@@ -194,7 +207,7 @@ class RetrieveNode(Node):
                 reached = self.go_to_pose(self.block_pose)
                 if reached:
                     self.logger.info(
-                        f"Grabbed block, entering STOCKPILING state to stockpile block"
+                        f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
                     )
                     self.state = StateMachine.STOCKPILING
 
@@ -204,12 +217,12 @@ class RetrieveNode(Node):
                 reached = True
                 if feedback_msg.block_captured and reached:
                     self.logger.info(
-                        f"Stockpiled block, entering RETURNING state to return to start"
+                        f"[{self.state.name}]Stockpiled block, entering RETURNING state to return to start"
                     )
                     self.state = StateMachine.RETURNING
                 elif not feedback_msg.block_captured:
                     self.logger.info(
-                        f"Failed to capture block, entering RECOVERY state to attempt recovery"
+                        f"[{self.state.name}]Failed to capture block, entering RECOVERY state to attempt recovery"
                     )
                     self.return_state = StateMachine.STOCKPILING
                     self.state = StateMachine.RECOVERY
@@ -219,6 +232,9 @@ class RetrieveNode(Node):
                 if self._start_pose is not None:
                     goal_reached = self.go_to_pose(self._start_pose)
                     if goal_reached:
+                        self.logger.info(
+                            f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
+                        )
                         goal_handle.succeed()
                         result = GoToBlock.Result()
                         result.success = True
@@ -229,7 +245,15 @@ class RetrieveNode(Node):
             elif self.state == StateMachine.RECOVERY:
                 # TODO: Add some kind of recovery behavior
                 cmd = Twist()
+
                 recovered = False
+
+                if self.recovery_pose is None:
+                    self.logger.warning("No recovery pose available, spinning robot", throttle_duration_sec=5.0)
+                    cmd.angular.z = 0.1
+                    self.vel_pub.publish(cmd)
+                    continue
+
                 if self.recovery_pose.position.y > 0.02:
                     cmd.angular.z = max(min(self.recovery_pose.position.y, 0.2), 0.05)
                 else:
@@ -241,10 +265,11 @@ class RetrieveNode(Node):
                         recovered = True
                 if recovered:
                     self.logger.info(
-                        f"Found block, entering {self.return_state.name.lower()} state"
+                        f"[{self.state.name}] Found block, entering {self.return_state.name} state"
                     )
-                    self.state = self.return_state
                     self.return_state = None
+                    self.recovery_pose = None
+                    self.state = self.return_state
 
                 self.vel_pub.publish(cmd)
 
