@@ -268,9 +268,9 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}] Found block, entering {self.return_state.name} state"
                     )
+                    self.state = self.return_state
                     self.return_state = None
                     self.recovery_pose = None
-                    self.state = self.return_state
 
                 self.vel_pub.publish(cmd)
 
@@ -335,7 +335,7 @@ class RetrieveNode(Node):
 
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
-    def pose_controller_clf(self, target_pose: Pose, gamma=1.0, k=3.0, h=0.5) -> Twist:
+    def pose_controller_clf(self, target_pose: Pose, gamma=0.5, k=2.0, h=0.3) -> Twist:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
