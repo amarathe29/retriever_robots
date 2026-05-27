@@ -1,27 +1,31 @@
 import math
 import numpy as np
 
+from scipy.spatial.transform import Rotation
+from geometry_msgs.msg import Quaternion
+
+
+
 
 def euler_from_quaternion(x, y, z, w):
     """
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: XYZ (Roll, Pitch, Yaw).
     """
-    t0 = 2.0 * (w * x + y * z)
-    t1 = 1.0 - 2.0 * (x * x + y * y)
-    roll = math.atan2(t0, t1)
+    return Rotation.from_quat([x, y, z, w]).as_euler()
 
-    t2 = 2.0 * (w * y - z * x)
-    t2 = 1.0 if t2 > 1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
 
-    t3 = 2.0 * (w * z + x * y)
-    t4 = 1.0 - 2.0 * (y * y + z * z)
-    yaw = math.atan2(t3, t4)
-
-    return roll, pitch, yaw
-
+def mult_quat_msgs(q1,q2):
+    """
+    Multiplies two quaternions represented as geometry_msgs.msg.Quaternion.
+    Returns the resulting quaternion as a geometry_msgs.msg.Quaternion.
+    """
+    r1 = Rotation.from_quat([q1.x, q1.y, q1.z, q1.w])
+    r2 = Rotation.from_quat([q2.x, q2.y, q2.z, q2.w])
+    r_result = r1 * r2
+    q_result = r_result.as_quat()
+    
+    return Quaternion(x=q_result[0], y=q_result[1], z=q_result[2], w=q_result[3])
 
 def quaternion_from_euler(roll, pitch, yaw):
     """

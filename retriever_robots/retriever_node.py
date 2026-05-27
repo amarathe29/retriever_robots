@@ -8,7 +8,7 @@ from nav_msgs.msg import Odometry
 from retriever_msgs.action import GoToBlock  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import euler_from_quaternion, angle_wrap
+from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs
 
 import numpy as np
 from enum import Enum, auto
@@ -38,7 +38,8 @@ class RetrieveNode(Node):
             Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
 
-        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
+        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame                    
+
         self.visible_block_sub = self.create_subscription(
             PoseStatus,
             f"{self.get_namespace()}/visible_block",
@@ -130,16 +131,17 @@ class RetrieveNode(Node):
                 msg.pose.orientation.w,
             )
 
-            positioning_distance = 0.3
-            self.grab_pose = Pose()
-            self.grab_pose.position.x = (
+            positioning_distance = 0.2
+            self.grab_pose = self.curr_pose.copy()
+            self.grab_pose.position.x += (
                 self.block_pose.position.x - positioning_distance * np.cos(yaw)
             )
-            self.grab_pose.position.y = (
+            self.grab_pose.position.y += (
                 self.block_pose.position.y - positioning_distance * np.sin(yaw)
             )
-            self.grab_pose.position.z = self.block_pose.position.z
-            self.grab_pose.orientation = self.block_pose.orientation
+            self.grab_pose.position.z = 0
+
+            self.grab_pose.orientation = mult_quat_msgs(self.block_pose.orientation, self.curr_pose.orientation)
             self.logger.info(
                 f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}",
                 throttle_duration_sec=5.0
