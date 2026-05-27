@@ -426,7 +426,7 @@ class RetrieveNode(Node):
             f"Controller distance remaining: {position_error}, angle difference: {theta_error_vec}",
             throttle_duration_sec=1.0,
         )
-        alpha = theta_error_vec - (theta - desired_theta)
+        alpha = theta_error_vec - angle_wrap(theta - desired_theta)
         alpha = angle_wrap(alpha)
 
         ca = np.cos(alpha)
@@ -480,7 +480,7 @@ class RetrieveNode(Node):
         # return True #TODO: UNDO
 
         if controller is None:
-            controller = self.pose_controller
+            controller = self.pose_controller_clf
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
