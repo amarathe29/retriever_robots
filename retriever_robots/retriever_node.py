@@ -12,6 +12,7 @@ from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_
 
 import numpy as np
 from enum import Enum, auto
+from copy import deepcopy
 
 
 class State(Enum):
@@ -132,7 +133,7 @@ class RetrieveNode(Node):
             )
 
             positioning_distance = 0.2
-            self.grab_pose = self.curr_pose.copy()
+            self.grab_pose = deepcopy(self.curr_pose)
             self.grab_pose.position.x += (
                 self.block_pose.position.x - positioning_distance * np.cos(yaw)
             )
