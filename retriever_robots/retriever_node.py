@@ -259,7 +259,7 @@ class RetrieveNode(Node):
 
                 self.logger.info(f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}", throttle_duration_sec=1.0)
 
-                if abs(self.recovery_pose.position.y) > 0.02:
+                if abs(self.recovery_pose.position.y) > 0.07:
                     self.logger.info(f"Recovery pose is too far {self.recovery_pose.position.y}, rotating", throttle_duration_sec=1.0)
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(min(abs(self.recovery_pose.position.y), 0.2), 0.05)
                 else:
