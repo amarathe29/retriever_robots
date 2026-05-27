@@ -395,7 +395,7 @@ class RetrieveNode(Node):
 
         self.logger.info(
             f"Using CLF controller to go to {target_pose}, from {self.curr_pose}",
-            throttle_duration_sec=5.0,
+            throttle_duration_sec=1.0,
         )
         q_curr = self.curr_pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
