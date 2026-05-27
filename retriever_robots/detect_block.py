@@ -194,8 +194,8 @@ class DetectBlock(Node):
 
         # Define the lower and upper bounds for the block's color in HSV space
         # do orange instead
-        lower_color = np.array([15, 100, 100])  # lower bound (orange color)
-        upper_color = np.array([35, 255, 255])  # Example upper
+        lower_color = np.array([2, 100, 100])  # lower bound (orange color)
+        upper_color = np.array([10, 255, 255])  # Example upper
 
         # Create a mask using the defined color bounds
         mask = cv2.inRange(hsv_image, lower_color, upper_color)
