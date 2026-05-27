@@ -74,7 +74,7 @@ class RetrieveNode(Node):
         self.request_pose = None
         self.grab_pose = None
         self.visible_count = 0
-        self.recovery_pose = Pose()
+        self.recovery_pose = None
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -250,7 +250,7 @@ class RetrieveNode(Node):
 
                 recovered = False
 
-                if self.recovery_pose is None:
+                if self.recovery_pose is None or self.recovery_pose == Pose():
                     self.logger.warning("No recovery pose available, spinning robot", throttle_duration_sec=5.0)
                     cmd.angular.z = 0.1
                     self.vel_pub.publish(cmd)
