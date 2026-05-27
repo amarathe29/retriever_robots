@@ -185,6 +185,7 @@ class RetrieveNode(Node):
                 self.state = State.NAVIGATING
 
             elif self.state == State.NAVIGATING:
+                continue # TODO: undo
                 reached = self.go_to_pose(self.request_pose)
                 if self.grab_pose is not None:
                     self.logger.info(
@@ -199,7 +200,6 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                continue
                 if self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
@@ -427,7 +427,7 @@ class RetrieveNode(Node):
     def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
         # for now, just pretend we went there
         self.logger.error(f"Gone to pose: {target_pose}")
-        return True
+        return True #TODO: UNDO
 
         if controller is None:
             controller = self.pose_controller_clf
