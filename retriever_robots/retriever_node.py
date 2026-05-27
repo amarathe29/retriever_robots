@@ -13,6 +13,7 @@ from retriever_robots.utils import euler_from_quaternion, angle_wrap
 import numpy as np
 from enum import Enum, auto
 
+
 class StateMachine(Enum):
     IDLE = auto()
     NAVIGATING = auto()
@@ -39,7 +40,10 @@ class RetrieveNode(Node):
 
         # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
         self.visible_block_sub = self.create_subscription(
-            PoseStatus, f"{self.get_namespace()}/visible_block", self.visible_block_callback, 10
+            PoseStatus,
+            f"{self.get_namespace()}/visible_block",
+            self.visible_block_callback,
+            10,
         )
 
         # Set up publisher
@@ -62,6 +66,7 @@ class RetrieveNode(Node):
         self.marker_size = 0.0544
 
         self.state = StateMachine.IDLE
+        self.return_state = StateMachine.NAVIGATING
         self.pose = None
         self.odom = None
         self.start_pose_set = False
@@ -69,6 +74,7 @@ class RetrieveNode(Node):
         self.request_pose = None
         self.grab_pose = None
         self.visible_count = 0
+        self.recovery_pose = Pose()
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -86,36 +92,56 @@ class RetrieveNode(Node):
 
     def visible_block_callback(self, msg: Pose) -> None:
 
+        if msg.block_in_frame and not msg.tag_in_frame:
+            self.grab_pose = None
+            self.block_pose = None
+            if self.state in [StateMachine.RECOVERY]:
+                self.recovery_pose = msg.pose
+            return
+
         if not msg.tag_in_frame:
             self.visible_count += 1
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
                 if self.state in [StateMachine.GRABBING, StateMachine.STOCKPILING]:
-                    self.logger.warning("No block visible")
+                    self.logger.warning("No tag visible")
             return
         self.visible_count = 0
         self.block_pose = msg.pose
 
-        if self.state in [StateMachine.NAVIGATING, StateMachine.FIND_GRAB_POSE, StateMachine.RECOVERY]:
-            
+        if self.state in [
+            StateMachine.NAVIGATING,
+            StateMachine.FIND_GRAB_POSE,
+        ]:
+
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
-            # should be colinear the orientation of the block. 
-            _,_,yaw = euler_from_quaternion(msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w)
+            # should be colinear the orientation of the block.
+            _, _, yaw = euler_from_quaternion(
+                msg.pose.orientation.x,
+                msg.pose.orientation.y,
+                msg.pose.orientation.z,
+                msg.pose.orientation.w,
+            )
 
             positioning_distance = 0.3
             self.grab_pose = Pose()
-            self.grab_pose.position.x = self.block_pose.position.x - positioning_distance * np.cos(yaw)
-            self.grab_pose.position.y = self.block_pose.position.y - positioning_distance * np.sin(yaw)
+            self.grab_pose.position.x = (
+                self.block_pose.position.x - positioning_distance * np.cos(yaw)
+            )
+            self.grab_pose.position.y = (
+                self.block_pose.position.y - positioning_distance * np.sin(yaw)
+            )
             self.grab_pose.position.z = self.block_pose.position.z
             self.grab_pose.orientation = self.block_pose.orientation
-            self.logger.info(f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}")
+            self.logger.info(
+                f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}"
+            )
 
         # TODO: We need to use the location of the block to update our state machine:
 
         # if we're grabbing, we can just check the position of the block within an envelope
 
         # if we're stockpiling, we want to catch if we lose sight of the block...we may need a custom message here with a bool...
-
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         """action handler for the retrieve action server"""
@@ -147,23 +173,12 @@ class RetrieveNode(Node):
 
             elif self.state == StateMachine.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
-                if reached or self.grab_pose is not None:
-                    self.logger.info(
-                        f"Reached block pose, entering FIND_GRAB_POSE state to locate block"
-                    )
-                    self.state = StateMachine.FIND_GRAB_POSE
-            elif self.state == StateMachine.FIND_GRAB_POSE:
                 if self.grab_pose is not None:
-                    self.logger.info(
-                        f"Found block pose, entering POSITIONING state to orient around block"
-                    )
                     self.state = StateMachine.POSITIONING
-                else:
-                    # TODO: do a cool spiral search outward
+                if reached and self.grab_pose is None:
+                    self.return_state = StateMachine.POSITIONING
                     self.state = StateMachine.RECOVERY
-                    # self.logger.info(
-                    #     f"Block not found, searching nearby"
-                    # )
+
             elif self.state == StateMachine.POSITIONING:
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
@@ -194,8 +209,8 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"Failed to capture block, entering RECOVERY state to attempt recovery"
                     )
+                    self.return_state = StateMachine.STOCKPILING
                     self.state = StateMachine.RECOVERY
-                pass
 
             # This state is just if we want the robot to return to the starting position
             elif self.state == StateMachine.RETURNING:
@@ -211,17 +226,25 @@ class RetrieveNode(Node):
 
             elif self.state == StateMachine.RECOVERY:
                 # TODO: Add some kind of recovery behavior
-                if self.grab_pose is not None:
-                    self.logger.info(
-                        f"Attempting to recover by going to grab pose {self.grab_pose}"
-                    )
-                    reached = self.go_to_pose(self.grab_pose)
-                    if reached:
-                        self.logger.info(
-                            f"Reached grab pose, entering POSITIONING state to orient around block"
+                cmd = Twist()
+                recovered = False
+                if self.recovery_pose.position.y > 0.02:
+                    cmd.angular.z = max(min(self.recovery_pose.position.y, 0.2), 0.05)
+                else:
+                    if self.recovery_pose.position.x > 0.1:
+                        cmd.linear.x = max(
+                            min(self.recovery_pose.position.x, 0.2), 0.05
                         )
-                        self.state = StateMachine.POSITIONING
-                pass
+                    else:
+                        recovered = True
+                if recovered:
+                    self.logger.info(
+                        f"Found block, entering {self.return_state.name.lower()} state"
+                    )
+                    self.state = self.return_state
+                    self.return_state = None
+
+                self.vel_pub.publish(cmd)
 
             feedback_msg.curr_pose = self.curr_pose
             goal_handle.publish_feedback(feedback_msg)
@@ -231,7 +254,6 @@ class RetrieveNode(Node):
         result.end_pose = self.curr_pose
         # add gracefull returning to idle and the idle position here
         return result
-
 
     def pose_controller(self, target_pose: Pose) -> Twist:
 
@@ -267,11 +289,13 @@ class RetrieveNode(Node):
         else:
             if distance > 0.1:
                 sgn = np.sign(distance)
-                cmd.linear.x = sgn* max(min(linear_gain * distance, 0.2), 0.05)
+                cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
             else:
                 if abs(desired_yaw_diff) > 0.1:
                     sgn = np.sign(desired_yaw_diff)
-                    cmd.angular.z = sgn * max(min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05)
+                    cmd.angular.z = sgn * max(
+                        min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
+                    )
                 else:
                     return Twist()
 
