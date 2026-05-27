@@ -210,6 +210,7 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
+                    self.positioning_pose = deepcopy(self.grab_pose)
                     self.state = State.POSITIONING
                 elif reached and self.enter_recovery:
                     self.logger.info(
@@ -219,7 +220,7 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                reached = self.go_to_pose(self.grab_pose)
+                reached = self.go_to_pose(self.positioning_pose)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
@@ -304,7 +305,9 @@ class RetrieveNode(Node):
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
-                    elif self.grab_pose is None:
+                    elif self.grab_pose is not None:
+                        if self.return_state == State.POSITIONING:
+                            self.positioning_pose = deepcopy(self.grab_pose)
                         recovered = True
                     else:
                         self.recovery_pose = None
@@ -313,6 +316,7 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}] Found block, entering {self.return_state.name} state"
                     )
+
                     self.state = self.return_state
                     self.return_state = None
                     self.recovery_pose = None
