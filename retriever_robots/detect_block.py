@@ -107,7 +107,7 @@ class DetectBlock(Node):
                     )
                     R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units='degrees')
 
-                    R_cam_to_robot =  R_image_to_robot_axes @ R_cam_angle_to_robot
+                    R_cam_to_robot =  R_cam_angle_to_robot @ R_image_to_robot_axes
 
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
 
