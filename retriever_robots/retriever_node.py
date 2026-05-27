@@ -487,7 +487,7 @@ class RetrieveNode(Node):
         # return True #TODO: UNDO
 
         if controller is None:
-            controller = self.pose_controller_clf
+            controller = self.pose_controller
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
