@@ -283,34 +283,27 @@ class RetrieveNode(Node):
                     self.vel_pub.publish(cmd)
                     continue
 
-                self.logger.info(
-                    f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}",
-                    throttle_duration_sec=1.0,
-                )
-
-                if abs(self.recovery_pose.position.y) > 0.07:
+                elif abs(self.recovery_pose.position.y) > 0.07:
                     self.logger.info(
-                        f"Recovery pose is too far {self.recovery_pose.position.y}, rotating",
+                        f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}",
                         throttle_duration_sec=1.0,
                     )
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
                         min(abs(self.recovery_pose.position.y), 0.2), 0.05
                     )
+                elif self.recovery_pose.position.x > 0.3:
+                    self.logger.info(
+                        f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
+                        throttle_duration_sec=1.0,
+                    )
+                    cmd.linear.x = max(min(self.recovery_pose.position.x, 0.2), 0.05)
+                elif self.grab_pose is not None:
+                    if self.return_state == State.POSITIONING:
+                        self.positioning_pose = deepcopy(self.grab_pose)
+                    recovered = True
                 else:
-                    if self.recovery_pose.position.x > 0.3:
-                        self.logger.info(
-                            f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
-                            throttle_duration_sec=1.0,
-                        )
-                        cmd.linear.x = max(
-                            min(self.recovery_pose.position.x, 0.2), 0.05
-                        )
-                    elif self.grab_pose is not None:
-                        if self.return_state == State.POSITIONING:
-                            self.positioning_pose = deepcopy(self.grab_pose)
-                        recovered = True
-                    else:
-                        self.recovery_pose = None
+                    self.recovery_pose = None
+
                 if recovered:
                     self.enter_recovery = False
                     self.logger.info(
