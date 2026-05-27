@@ -222,7 +222,9 @@ class RetrieveNode(Node):
                     self.return_state = State.POSITIONING
                     self.state = State.RECOVERY
                     continue
-                reached = self.go_to_pose(self.grab_pose)
+                reached = self.go_to_pose(
+                    self.grab_pose, controller=self.pose_controller
+                )
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
