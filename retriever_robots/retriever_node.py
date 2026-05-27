@@ -366,7 +366,7 @@ class RetrieveNode(Node):
             f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
             throttle_duration_sec=1.0,
         )
-        if abs(angle_diff) > 0.04 and distance > 0.05:
+        if abs(angle_diff) > 0.04 and distance > 0.15:
             sgn = np.sign(angle_diff)
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
