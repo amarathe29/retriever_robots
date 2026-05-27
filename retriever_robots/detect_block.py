@@ -115,10 +115,7 @@ class DetectBlock(Node):
 
                     R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
 
-                    # Marker Y is Robot Y, Marker X is Robot Z, Marker Z is Robot
-                    R_marker_correction = np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-                    R_marker_to_robot = R_marker_to_robot @ R_marker_correction
 
                     T_cam_to_robot = np.array(
                         [[-0.1], [0], [0]]
@@ -140,7 +137,7 @@ class DetectBlock(Node):
                     pose.position.y = float(T_marker_to_robot[1])
                     pose.position.z = float(T_marker_to_robot[2])
 
-                    w, x, y, z = Rotation.from_matrix(R_marker_to_robot).as_quat()
+                    x, y, z, w = Rotation.from_matrix(R_marker_to_robot).as_quat()
                     pose.orientation.x = x
                     pose.orientation.y = y
                     pose.orientation.z = z
