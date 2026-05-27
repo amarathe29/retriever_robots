@@ -339,7 +339,7 @@ class RetrieveNode(Node):
             return
 
         self.logger.info(
-            f"Using simple pose controller to go to {target_pose}",
+            f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
             throttle_duration_sec=2.0,
         )
 
@@ -457,6 +457,11 @@ class RetrieveNode(Node):
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
         angle_diff = angle_wrap(angle_to_target - current_yaw)
+
+        self.logger.info(
+            f"Distance remaining: {distance}, Angle difference: {angle_diff}",
+            throttle_duration_sec=1.0,
+        )
 
         # If we haven't reached the target, return false, else we return true
         if abs(angle_diff) >= 0.08 or distance >= 0.1:
