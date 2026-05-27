@@ -75,6 +75,8 @@ class RetrieveNode(Node):
         self.grab_pose = None
         self.visible_count = 0
         self.recovery_pose = None
+        self.enter_recovery = False
+
 
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
@@ -93,8 +95,8 @@ class RetrieveNode(Node):
     def visible_block_callback(self, msg: Pose) -> None:
 
         if msg.block_in_frame and not msg.tag_in_frame:
-            self.grab_pose = None
-            self.block_pose = None
+            # self.grab_pose = None
+            # self.block_pose = None
             if self.state in [State.RECOVERY]:
                 self.logger.info(f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})", throttle_duration_sec=1.0 )
                 self.recovery_pose = msg.pose
@@ -105,8 +107,11 @@ class RetrieveNode(Node):
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
                 if self.state in [State.GRABBING, State.STOCKPILING]:
+                    self.enter_recovery = True
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
+
+        self.enter_recovery = False
         self.visible_count = 0
         self.block_pose = msg.pose
 
@@ -183,7 +188,7 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
                     self.state = State.POSITIONING
-                if reached and self.grab_pose is None:
+                if reached and self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
@@ -191,7 +196,7 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                if self.grab_pose is None:
+                if self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
                     )
@@ -271,6 +276,7 @@ class RetrieveNode(Node):
                     else:
                         recovered = True
                 if recovered:
+                    self.enter_recovery = False
                     self.logger.info(
                         f"[{self.state.name}] Found block, entering {self.return_state.name} state"
                     )
