@@ -104,7 +104,7 @@ class RetrieveNode(Node):
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
                 if self.state in [StateMachine.GRABBING, StateMachine.STOCKPILING]:
-                    self.logger.warning("No tag visible")
+                    self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
         self.visible_count = 0
         self.block_pose = msg.pose
@@ -161,6 +161,8 @@ class RetrieveNode(Node):
         goal_reached = False
 
         while not goal_reached:
+
+            self.logger.info(f"Current state: {self.state.name}", throttle_duration_sec=1.0)
 
             if self.state == StateMachine.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
@@ -261,7 +263,7 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        self.logger.info(f"Using simple pose controller to go to {target_pose}")
+        self.logger.info(f"Using simple pose controller to go to {target_pose}", throttle_duration_sec=2.0)
 
         dx = target_pose.position.x - self.curr_pose.position.x
         dy = target_pose.position.y - self.curr_pose.position.y

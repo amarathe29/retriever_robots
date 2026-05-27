@@ -118,7 +118,8 @@ class DetectBlock(Node):
 
 
                     self.logger.debug(
-                        f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
+                        f"Tag Detected: Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)",
+                        throttle_duration_sec = 1.0
                     )
 
                     pose = Pose()
@@ -139,10 +140,10 @@ class DetectBlock(Node):
 
 
                 else:
-                    self.logger.error("Could not solve PnP for detected tag.")
+                    self.logger.debug("Could not solve PnP for detected tag.", throttle_duration_sec=1.0)
 
             else:
-                self.logger.error("No tags detected in the image.")
+                self.logger.debug("No tags detected in the image.", throttle_duration_sec=1.0)
 
             if not pose_status.tag_in_frame:    
                 pose_status.block_in_frame, x,y = self.segment_color(cv_image) # if no tags are detected, try to segment based on color as a fallback
@@ -152,7 +153,7 @@ class DetectBlock(Node):
                     pose_status.pose.position.y = max(min(-0.001 * (x - cv_image.shape[1] / 2), 0.5), -0.5)
                     pose_status.pose.position.z = 0.0
                     pose_status.pose.orientation.w = 1.0
-                    self.logger.warn(f"Tag not detected, using color segmentation. Estimated pose: ({pose_status.pose.position.x}, {pose_status.pose.position.y}, {pose_status.pose.position.z})")
+                    self.logger.debug(f"Tag not detected, using color segmentation. Estimated pose: ({pose_status.pose.position.x}, {pose_status.pose.position.y}, {pose_status.pose.position.z})", throttle_duration_sec=1.0)
 
 
             self.vis_pub.publish(pose_status)
