@@ -39,7 +39,7 @@ class RetrieveNode(Node):
             Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
 
-        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame                    
+        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
 
         self.visible_block_sub = self.create_subscription(
             PoseStatus,
@@ -79,7 +79,6 @@ class RetrieveNode(Node):
         self.recovery_pose = None
         self.enter_recovery = False
 
-
     def pose_callback(self, msg: Pose) -> None:
         self.logger.debug(f"Received Pose: {msg}")
         self.pose = msg
@@ -100,7 +99,10 @@ class RetrieveNode(Node):
             # self.grab_pose = None
             # self.block_pose = None
             if self.state in [State.RECOVERY]:
-                self.logger.info(f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})", throttle_duration_sec=1.0 )
+                self.logger.info(
+                    f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})",
+                    throttle_duration_sec=1.0,
+                )
                 self.recovery_pose = msg.pose
             return
 
@@ -142,10 +144,12 @@ class RetrieveNode(Node):
             )
             self.grab_pose.position.z = 0
 
-            self.grab_pose.orientation = mult_quat_msgs(self.block_pose.orientation, self.curr_pose.orientation)
+            self.grab_pose.orientation = mult_quat_msgs(
+                self.block_pose.orientation, self.curr_pose.orientation
+            )
             self.logger.info(
                 f"found block at \n{self.print_pose_euler(self.block_pose)},\n setting grab pose to \n{self.print_pose_euler(self.grab_pose)}\n Current Pose is: \n{self.print_pose_euler(self.curr_pose)}\n",
-                throttle_duration_sec=5.0
+                throttle_duration_sec=5.0,
             )
 
         # TODO: We need to use the location of the block to update our state machine:
@@ -159,7 +163,7 @@ class RetrieveNode(Node):
             pose.orientation.x,
             pose.orientation.y,
             pose.orientation.z,
-            pose.orientation.w
+            pose.orientation.w,
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
@@ -182,7 +186,9 @@ class RetrieveNode(Node):
 
         while not goal_reached:
 
-            self.logger.info(f"Current state: {self.state.name}", throttle_duration_sec=1.0)
+            self.logger.info(
+                f"Current state: {self.state.name}", throttle_duration_sec=1.0
+            )
 
             if self.state == State.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
@@ -194,7 +200,7 @@ class RetrieveNode(Node):
                 self.state = State.NAVIGATING
 
             elif self.state == State.NAVIGATING:
-                continue # TODO: undo
+                # continue  # TODO: undo
                 reached = self.go_to_pose(self.request_pose)
                 if self.grab_pose is not None:
                     self.logger.info(
@@ -225,7 +231,9 @@ class RetrieveNode(Node):
 
             elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
-                reached = self.go_to_pose(self.block_pose, controller=self.pose_controller_clf_constrained)
+                reached = self.go_to_pose(
+                    self.block_pose, controller=self.pose_controller_clf_constrained
+                )
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
@@ -264,25 +272,38 @@ class RetrieveNode(Node):
                         return result
 
             elif self.state == State.RECOVERY:
-                # TODO: Add some kind of recovery behavior
                 cmd = Twist()
 
                 recovered = False
 
                 if self.recovery_pose is None or self.recovery_pose == Pose():
-                    self.logger.warning("No recovery pose available, spinning robot", throttle_duration_sec=5.0)
+                    self.logger.warning(
+                        "No recovery pose available, spinning robot",
+                        throttle_duration_sec=5.0,
+                    )
                     cmd.angular.z = 0.2
                     self.vel_pub.publish(cmd)
                     continue
 
-                self.logger.info(f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}", throttle_duration_sec=1.0)
+                self.logger.info(
+                    f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}",
+                    throttle_duration_sec=1.0,
+                )
 
                 if abs(self.recovery_pose.position.y) > 0.07:
-                    self.logger.info(f"Recovery pose is too far {self.recovery_pose.position.y}, rotating", throttle_duration_sec=1.0)
-                    cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(min(abs(self.recovery_pose.position.y), 0.2), 0.05)
+                    self.logger.info(
+                        f"Recovery pose is too far {self.recovery_pose.position.y}, rotating",
+                        throttle_duration_sec=1.0,
+                    )
+                    cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
+                        min(abs(self.recovery_pose.position.y), 0.2), 0.05
+                    )
                 else:
                     if self.recovery_pose.position.x > 0.3 and self.grab_pose is None:
-                        self.logger.info(f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it", throttle_duration_sec=1.0)
+                        self.logger.info(
+                            f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
+                            throttle_duration_sec=1.0,
+                        )
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
@@ -314,7 +335,10 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        self.logger.info(f"Using simple pose controller to go to {target_pose}", throttle_duration_sec=2.0)
+        self.logger.info(
+            f"Using simple pose controller to go to {target_pose}",
+            throttle_duration_sec=2.0,
+        )
 
         dx = target_pose.position.x - self.curr_pose.position.x
         dy = target_pose.position.y - self.curr_pose.position.y
@@ -335,7 +359,6 @@ class RetrieveNode(Node):
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
-        # TODO: Double-check this works with the new changes
         if abs(angle_diff) > 0.1 and distance > 0.15:
             sgn = np.sign(angle_diff)
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
@@ -363,12 +386,17 @@ class RetrieveNode(Node):
 
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
-    def pose_controller_clf(self, target_pose: Pose, gamma=0.5, k=2.0, h=0.3, forward_constraint=False) -> Twist:
+    def pose_controller_clf(
+        self, target_pose: Pose, gamma=0.5, k=2.0, h=0.3, forward_constraint=False
+    ) -> Twist:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
 
-        self.logger.info(f"Using CLF controller to go to {target_pose}, from {self.curr_pose}", throttle_duration_sec=5.0)
+        self.logger.info(
+            f"Using CLF controller to go to {target_pose}, from {self.curr_pose}",
+            throttle_duration_sec=5.0,
+        )
         q_curr = self.curr_pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
         q_desired = target_pose.orientation
@@ -405,7 +433,7 @@ class RetrieveNode(Node):
             v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)            
+        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
 
         cmd = Twist()
         cmd.linear.x = v
@@ -435,8 +463,8 @@ class RetrieveNode(Node):
 
     def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
         # for now, just pretend we went there
-        self.logger.error(f"Gone to pose: {target_pose}")
-        return True #TODO: UNDO
+        # self.logger.error(f"Gone to pose: {target_pose}")
+        # return True #TODO: UNDO
 
         if controller is None:
             controller = self.pose_controller_clf
