@@ -464,7 +464,11 @@ class RetrieveNode(Node):
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
-        angle_diff = angle_wrap(angle_to_target - current_yaw)
+        q_target = target_pose.orientation
+        _, _, desired_yaw = euler_from_quaternion(
+            q_target.x, q_target.y, q_target.z, q_target.w
+        )
+        angle_diff = angle_wrap(desired_yaw - current_yaw)
 
         self.logger.info(
             f"Distance remaining: {distance}, Angle difference: {angle_diff}",
