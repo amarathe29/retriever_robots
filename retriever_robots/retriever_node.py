@@ -144,7 +144,7 @@ class RetrieveNode(Node):
 
             self.grab_pose.orientation = mult_quat_msgs(self.block_pose.orientation, self.curr_pose.orientation)
             self.logger.info(
-                f"found block at \n{self.block_pose},\n setting grab pose to \n{self.grab_pose}\n Current Pose is: \n{self.curr_pose}\n",
+                f"found block at \n{self.print_pose_euler(self.block_pose)},\n setting grab pose to \n{self.print_pose_euler(self.grab_pose)}\n Current Pose is: \n{self.print_pose_euler(self.curr_pose)}\n",
                 throttle_duration_sec=5.0
             )
 
@@ -153,6 +153,15 @@ class RetrieveNode(Node):
         # if we're grabbing, we can just check the position of the block within an envelope
 
         # if we're stockpiling, we want to catch if we lose sight of the block...we may need a custom message here with a bool...
+
+    def print_pose_euler(self, pose: Pose) -> str:
+        roll, pitch, yaw = euler_from_quaternion(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w
+        )
+        return f"POS: ({pose.position.x}, {pose.position.y}), EULER: (Roll: {roll}, Pitch: {pitch}, Yaw: {yaw})"
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         """action handler for the retrieve action server"""
