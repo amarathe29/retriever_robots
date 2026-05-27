@@ -144,7 +144,7 @@ class RetrieveNode(Node):
 
             self.grab_pose.orientation = mult_quat_msgs(self.block_pose.orientation, self.curr_pose.orientation)
             self.logger.info(
-                f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}",
+                f"found block at \n{self.block_pose},\n setting grab pose to \n{self.grab_pose}\n Current Pose is: \n{self.curr_pose}\n",
                 throttle_duration_sec=5.0
             )
 
