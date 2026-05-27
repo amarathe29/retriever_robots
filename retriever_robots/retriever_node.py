@@ -18,7 +18,6 @@ from copy import deepcopy
 class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
-    FIND_GRAB_POSE = auto()
     POSITIONING = auto()
     GRABBING = auto()
     STOCKPILING = auto()
@@ -110,7 +109,12 @@ class RetrieveNode(Node):
             self.visible_count += 1
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
-                if self.state in [State.GRABBING, State.STOCKPILING]:
+                if self.state in [
+                    State.POSITIONING,
+                    State.NAVIGATING,
+                    State.GRABBING,
+                    State.STOCKPILING,
+                ]:
                     self.enter_recovery = True
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
@@ -119,9 +123,9 @@ class RetrieveNode(Node):
         self.visible_count = 0
         self.block_pose = msg.pose
 
+        # DO NOT ADD POSITIONING HERE!!!
         if self.state in [
             State.NAVIGATING,
-            State.FIND_GRAB_POSE,
             State.RECOVERY,
         ]:
 
@@ -207,7 +211,7 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
                     self.state = State.POSITIONING
-                if reached and self.enter_recovery:
+                elif reached and self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
