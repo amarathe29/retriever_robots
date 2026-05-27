@@ -118,7 +118,7 @@ class DetectBlock(Node):
                     # Marker Y is Robot Y, Marker X is Robot Z, Marker Z is Robot
                     R_marker_correction = np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-                    R_marker_to_robot = R_marker_correction @ R_marker_to_robot
+                    R_marker_to_robot = R_marker_to_robot @ R_marker_correction
 
                     T_cam_to_robot = np.array(
                         [[-0.1], [0], [0]]
