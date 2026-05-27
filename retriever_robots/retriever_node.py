@@ -14,7 +14,7 @@ import numpy as np
 from enum import Enum, auto
 
 
-class StateMachine(Enum):
+class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
     FIND_GRAB_POSE = auto()
@@ -65,8 +65,8 @@ class RetrieveNode(Node):
 
         self.marker_size = 0.0544
 
-        self.state = StateMachine.IDLE
-        self.return_state = StateMachine.NAVIGATING
+        self.state = State.IDLE
+        self.return_state = State.NAVIGATING
         self.pose = None
         self.odom = None
         self.start_pose_set = False
@@ -95,7 +95,7 @@ class RetrieveNode(Node):
         if msg.block_in_frame and not msg.tag_in_frame:
             self.grab_pose = None
             self.block_pose = None
-            if self.state in [StateMachine.RECOVERY]:
+            if self.state in [State.RECOVERY]:
                 self.recovery_pose = msg.pose
             return
 
@@ -103,16 +103,16 @@ class RetrieveNode(Node):
             self.visible_count += 1
             if self.visible_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
-                if self.state in [StateMachine.GRABBING, StateMachine.STOCKPILING]:
+                if self.state in [State.GRABBING, State.STOCKPILING]:
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
         self.visible_count = 0
         self.block_pose = msg.pose
 
         if self.state in [
-            StateMachine.NAVIGATING,
-            StateMachine.FIND_GRAB_POSE,
-            StateMachine.RECOVERY,
+            State.NAVIGATING,
+            State.FIND_GRAB_POSE,
+            State.RECOVERY,
         ]:
 
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
@@ -148,7 +148,7 @@ class RetrieveNode(Node):
         """action handler for the retrieve action server"""
 
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
-        if self.state != StateMachine.IDLE:
+        if self.state != State.IDLE:
             self.logger.error(f"Already running an action")
             goal_handle.fail()
             result = GoToBlock.Result()
@@ -165,54 +165,54 @@ class RetrieveNode(Node):
 
             self.logger.info(f"Current state: {self.state.name}", throttle_duration_sec=1.0)
 
-            if self.state == StateMachine.IDLE:
+            if self.state == State.IDLE:
                 self.request_pose = goal_handle.request.goal_pose
                 self.grab_pose = None
                 self.marker_location = None
                 self.logger.info(
                     f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
                 )
-                self.state = StateMachine.NAVIGATING
+                self.state = State.NAVIGATING
 
-            elif self.state == StateMachine.NAVIGATING:
+            elif self.state == State.NAVIGATING:
                 reached = self.go_to_pose(self.request_pose)
                 if self.grab_pose is not None:
                     self.logger.info(
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
-                    self.state = StateMachine.POSITIONING
+                    self.state = State.POSITIONING
                 if reached and self.grab_pose is None:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = StateMachine.POSITIONING
-                    self.state = StateMachine.RECOVERY
+                    self.return_state = State.POSITIONING
+                    self.state = State.RECOVERY
 
-            elif self.state == StateMachine.POSITIONING:
+            elif self.state == State.POSITIONING:
                 if self.grab_pose is None:
                     self.logger.info(
                         f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = StateMachine.POSITIONING
-                    self.state = StateMachine.RECOVERY
+                    self.return_state = State.POSITIONING
+                    self.state = State.RECOVERY
                     continue
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
                     )
-                    self.state = StateMachine.GRABBING
+                    self.state = State.GRABBING
 
-            elif self.state == StateMachine.GRABBING:
+            elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
                 reached = self.go_to_pose(self.block_pose)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
                     )
-                    self.state = StateMachine.STOCKPILING
+                    self.state = State.STOCKPILING
 
-            elif self.state == StateMachine.STOCKPILING:
+            elif self.state == State.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
                 feedback_msg.block_captured = True
                 reached = True
@@ -220,16 +220,16 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Stockpiled block, entering RETURNING state to return to start"
                     )
-                    self.state = StateMachine.RETURNING
+                    self.state = State.RETURNING
                 elif not feedback_msg.block_captured:
                     self.logger.info(
                         f"[{self.state.name}]Failed to capture block, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = StateMachine.STOCKPILING
-                    self.state = StateMachine.RECOVERY
+                    self.return_state = State.STOCKPILING
+                    self.state = State.RECOVERY
 
             # This state is just if we want the robot to return to the starting position
-            elif self.state == StateMachine.RETURNING:
+            elif self.state == State.RETURNING:
                 if self._start_pose is not None:
                     goal_reached = self.go_to_pose(self._start_pose)
                     if goal_reached:
@@ -240,10 +240,10 @@ class RetrieveNode(Node):
                         result = GoToBlock.Result()
                         result.success = True
                         result.end_pose = self.curr_pose
-                        self.state = StateMachine.IDLE
+                        self.state = State.IDLE
                         return result
 
-            elif self.state == StateMachine.RECOVERY:
+            elif self.state == State.RECOVERY:
                 # TODO: Add some kind of recovery behavior
                 cmd = Twist()
 
@@ -255,10 +255,12 @@ class RetrieveNode(Node):
                     self.vel_pub.publish(cmd)
                     continue
 
+                self.logger.info(f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}", throttle_duration_sec=1.0)
+
                 if self.recovery_pose.position.y > 0.02:
-                    cmd.angular.z = max(min(self.recovery_pose.position.y, 0.2), 0.05)
+                    cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(min(abs(self.recovery_pose.position.y), 0.2), 0.05)
                 else:
-                    if self.recovery_pose.position.x > 0.1:
+                    if self.recovery_pose.position.x > 0.5:
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
