@@ -118,11 +118,11 @@ class DetectBlock(Node):
                         [
                             [0, -1, 0],
                             [1, 0, 0],
-                            [0, 0, 1],
+                            [0, 0, -1],
                         ]
                     )
                     R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-                    R_marker_to_robot = R_marker_to_robot @ R_yaw_correction
+                    R_marker_to_robot = R_yaw_correction @ R_marker_to_robot
 
                     T_cam_to_robot = np.array(
                         [[-0.1], [0], [0]]
