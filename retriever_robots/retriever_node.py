@@ -135,7 +135,8 @@ class RetrieveNode(Node):
             self.grab_pose.position.z = self.block_pose.position.z
             self.grab_pose.orientation = self.block_pose.orientation
             self.logger.info(
-                f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}"
+                f"found block at {self.block_pose}, setting grab pose to {self.grab_pose}",
+                throttle_duration_sec=5.0
             )
 
         # TODO: We need to use the location of the block to update our state machine:
@@ -257,10 +258,12 @@ class RetrieveNode(Node):
 
                 self.logger.info(f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}", throttle_duration_sec=1.0)
 
-                if self.recovery_pose.position.y > 0.02:
+                if abs(self.recovery_pose.position.y) > 0.02:
+                    self.logger.info(f"Recovery pose is too far {self.recovery_pose.position.y}, rotating", throttle_duration_sec=1.0)
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(min(abs(self.recovery_pose.position.y), 0.2), 0.05)
                 else:
                     if self.recovery_pose.position.x > 0.3 and self.grab_pose is None:
+                        self.logger.info(f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it", throttle_duration_sec=1.0)
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
