@@ -195,6 +195,7 @@ class RetrieveNode(Node):
                     )
                     self.return_state = StateMachine.POSITIONING
                     self.state = StateMachine.RECOVERY
+                    continue
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
@@ -408,7 +409,7 @@ class RetrieveNode(Node):
         # return True
 
         if controller is None:
-            controller = self.pose_controller
+            controller = self.pose_controller_clf
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
