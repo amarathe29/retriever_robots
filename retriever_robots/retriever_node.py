@@ -260,7 +260,7 @@ class RetrieveNode(Node):
                 if self.recovery_pose.position.y > 0.02:
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(min(abs(self.recovery_pose.position.y), 0.2), 0.05)
                 else:
-                    if self.recovery_pose.position.x > 0.5:
+                    if self.recovery_pose.position.x > 0.3 and self.grab_pose is None:
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
