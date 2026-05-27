@@ -161,7 +161,7 @@ class RetrieveNode(Node):
             pose.orientation.z,
             pose.orientation.w
         )
-        return f"POS: ({pose.position.x}, {pose.position.y}), EULER: (Roll: {roll}, Pitch: {pitch}, Yaw: {yaw})"
+        return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
     def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
         """action handler for the retrieve action server"""
