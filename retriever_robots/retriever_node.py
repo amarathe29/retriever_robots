@@ -219,13 +219,6 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                if self.enter_recovery:
-                    self.logger.info(
-                        f"[{self.state.name}]Lost sight of block, entering RECOVERY state to attempt recovery"
-                    )
-                    self.return_state = State.POSITIONING
-                    self.state = State.RECOVERY
-                    continue
                 reached = self.go_to_pose(self.grab_pose)
                 if reached:
                     self.logger.info(
@@ -303,7 +296,7 @@ class RetrieveNode(Node):
                         min(abs(self.recovery_pose.position.y), 0.2), 0.05
                     )
                 else:
-                    if self.recovery_pose.position.x > 0.3 and self.grab_pose is None:
+                    if self.recovery_pose.position.x > 0.3:
                         self.logger.info(
                             f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
                             throttle_duration_sec=1.0,
@@ -311,8 +304,10 @@ class RetrieveNode(Node):
                         cmd.linear.x = max(
                             min(self.recovery_pose.position.x, 0.2), 0.05
                         )
-                    else:
+                    elif self.grab_pose is None:
                         recovered = True
+                    else:
+                        self.recovery_pose = None
                 if recovered:
                     self.enter_recovery = False
                     self.logger.info(
