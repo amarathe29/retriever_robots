@@ -459,7 +459,7 @@ class RetrieveNode(Node):
         angle_diff = angle_wrap(angle_to_target - current_yaw)
 
         # If we haven't reached the target, return false, else we return true
-        if abs(angle_diff) > 0.04 or distance > 0.1:
+        if abs(angle_diff) >= 0.08 or distance >= 0.1:
             return False
 
         return True
