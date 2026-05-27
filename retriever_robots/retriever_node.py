@@ -426,7 +426,7 @@ class RetrieveNode(Node):
             f"Controller distance remaining: {position_error}, angle difference: {theta_error_vec}",
             throttle_duration_sec=1.0,
         )
-        alpha = theta_error_vec - angle_wrap(theta - desired_theta)
+        alpha = theta_error_vec - (theta - desired_theta)
         alpha = angle_wrap(alpha)
 
         ca = np.cos(alpha)
@@ -437,7 +437,7 @@ class RetrieveNode(Node):
             v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        w = k * alpha * gamma * (ca * sinc_alpha) * (alpha + h * theta_error_vec)
 
         cmd = Twist()
         cmd.linear.x = v
