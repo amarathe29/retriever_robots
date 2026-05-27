@@ -425,8 +425,8 @@ class RetrieveNode(Node):
 
     def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
         # for now, just pretend we went there
-        # self.logger.error(f"Gone to pose: {target_pose}")
-        # return True
+        self.logger.error(f"Gone to pose: {target_pose}")
+        return True
 
         if controller is None:
             controller = self.pose_controller_clf
