@@ -362,15 +362,19 @@ class RetrieveNode(Node):
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
-        if abs(angle_diff) > 0.1 and distance > 0.15:
+        self.logger.info(
+            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
+            throttle_duration_sec=1.0,
+        )
+        if abs(angle_diff) > 0.04 and distance > 0.05:
             sgn = np.sign(angle_diff)
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
-            if distance > 0.1:
+            if distance > 0.07:
                 sgn = np.sign(distance)
                 cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
             else:
-                if abs(desired_yaw_diff) > 0.1:
+                if abs(desired_yaw_diff) > 0.04:
                     sgn = np.sign(desired_yaw_diff)
                     cmd.angular.z = sgn * max(
                         min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
@@ -425,6 +429,10 @@ class RetrieveNode(Node):
         # Angle to goal from goal frame
         theta_error_vec = np.arctan2(position_error[1], position_error[0])
 
+        self.logger.info(
+            f"Controller distance remaining: {position_error}, angle difference: {theta_error_vec}",
+            throttle_duration_sec=1.0,
+        )
         alpha = theta_error_vec - (theta - desired_theta)
         alpha = angle_wrap(alpha)
 
