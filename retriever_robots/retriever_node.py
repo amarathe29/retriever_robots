@@ -211,37 +211,38 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
                     self.positioning_pose = deepcopy(self.grab_pose)
-                    self.state = State.POSITIONING
+                    self.return_state = State.STOCKPILING
+                    self.state = State.RECOVERY
                 elif reached and self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = State.POSITIONING
+                    self.return_state = State.STOCKPILING
                     self.state = State.RECOVERY
 
-            elif self.state == State.POSITIONING:
-                reached = self.go_to_pose(self.positioning_pose)
-                if reached:
-                    self.logger.info(
-                        f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
-                    )
-                    self.state = State.GRABBING
+            # elif self.state == State.POSITIONING:
+            #     reached = self.go_to_pose(self.positioning_pose)
+            #     if reached:
+            #         self.logger.info(
+            #             f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
+            #         )
+            #         self.state = State.GRABBING
 
-            elif self.state == State.GRABBING:
-                # super naive, I'd rather put an bound on block position here
-                move_pose = deepcopy(self.curr_pose)
-                move_pose.position.x += self.block_pose.position.x
-                move_pose.position.y += self.block_pose.position.y
-                reached = self.go_to_pose(move_pose)
-                self.logger.info(
-                    f"Going to block located at {move_pose}",
-                    throttle_duration_sec=1.0,
-                )
-                if reached:
-                    self.logger.info(
-                        f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
-                    )
-                    self.state = State.STOCKPILING
+            # elif self.state == State.GRABBING:
+            #     # super naive, I'd rather put an bound on block position here
+            #     move_pose = deepcopy(self.curr_pose)
+            #     move_pose.position.x += self.block_pose.position.x
+            #     move_pose.position.y += self.block_pose.position.y
+            #     reached = self.go_to_pose(move_pose)
+            #     self.logger.info(
+            #         f"Going to block located at {move_pose}",
+            #         throttle_duration_sec=1.0,
+            #     )
+            #     if reached:
+            #         self.logger.info(
+            #             f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
+            #         )
+            #         self.state = State.STOCKPILING
 
             elif self.state == State.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
@@ -296,7 +297,7 @@ class RetrieveNode(Node):
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
                         min(abs(self.recovery_pose.position.y), 0.2), 0.05
                     )
-                elif self.recovery_pose.position.x > 0.45:
+                elif self.recovery_pose.position.x > 0.4:
                     self.logger.info(
                         f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
                         throttle_duration_sec=1.0,
@@ -392,7 +393,7 @@ class RetrieveNode(Node):
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
     def pose_controller_clf(
-        self, target_pose: Pose, gamma=1, k=2.5, h=1, forward_constraint=False
+        self, target_pose: Pose, gamma=1, k=2, h=1, forward_constraint=False
     ) -> Twist:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
