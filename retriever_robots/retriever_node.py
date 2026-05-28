@@ -422,6 +422,7 @@ class RetrieveNode(Node):
         # Angle to goal from goal frame
         theta_error_vec = np.arctan2(position_error[1], position_error[0])
         if e <= 0.025:
+            self.logger.info(f"Positional error is small, setting theta_erro_vec to 0")
             theta_error_vec = 0
 
         alpha = theta_error_vec - (theta - desired_theta)
