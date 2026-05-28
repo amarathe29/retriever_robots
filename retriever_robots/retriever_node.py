@@ -230,6 +230,10 @@ class RetrieveNode(Node):
             elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
                 reached = self.go_to_pose(self.block_pose)
+                self.logger.info(
+                    f"Going to block pose at {self.block_pose},\n from current pose: {self.curr_pose}",
+                    throttle_duration_sec=1.0,
+                )
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
@@ -289,7 +293,7 @@ class RetrieveNode(Node):
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
                         min(abs(self.recovery_pose.position.y), 0.2), 0.05
                     )
-                elif self.recovery_pose.position.x > 0.55:
+                elif self.recovery_pose.position.x > 0.45:
                     self.logger.info(
                         f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
                         throttle_duration_sec=1.0,
@@ -441,6 +445,11 @@ class RetrieveNode(Node):
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
         w = k * alpha + gamma * (ca * sinc_alpha) * (alpha + h * theta_error_vec)
 
+        if e < 0.025:
+            self.logger.info("Position error low", throttle_duration_sec=1.0)
+        if alpha < 0.05:
+            self.logger.info("Angular error low", throttle_duration_sec=1.0)
+
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
@@ -482,7 +491,7 @@ class RetrieveNode(Node):
         # return True #TODO: UNDO
 
         if controller is None:
-            controller = self.pose_controller
+            controller = self.pose_controller_clf
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
