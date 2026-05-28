@@ -422,13 +422,13 @@ class RetrieveNode(Node):
         # Angle to goal from goal frame
         theta_error_vec = np.arctan2(position_error[1], position_error[0])
 
-        self.logger.info(
-            f"Controller distance remaining: {position_error}, angle difference: {theta_error_vec}",
-            throttle_duration_sec=1.0,
-        )
         alpha = theta_error_vec - (theta - desired_theta)
         alpha = angle_wrap(alpha)
 
+        self.logger.info(
+            f"Controller distance remaining: {e}, angle difference: {alpha}",
+            throttle_duration_sec=1.0,
+        )
         ca = np.cos(alpha)
         sa = np.sin(alpha)
 
