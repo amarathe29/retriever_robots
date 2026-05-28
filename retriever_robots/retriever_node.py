@@ -393,7 +393,7 @@ class RetrieveNode(Node):
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
     def pose_controller_clf(
-        self, target_pose: Pose, gamma=1, k=2, h=1, forward_constraint=False
+        self, target_pose: Pose, gamma=0.7, k=1.6, h=0.7, forward_constraint=False
     ) -> Twist:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
