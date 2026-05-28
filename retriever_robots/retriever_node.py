@@ -229,9 +229,12 @@ class RetrieveNode(Node):
 
             elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
-                reached = self.go_to_pose(self.block_pose)
+                move_pose = deepcopy(self.curr_pose)
+                move_pose.position.x += self.block_pose.position.x
+                move_pose.position.y += self.block_pose.position.y
+                reached = self.go_to_pose(move_pose)
                 self.logger.info(
-                    f"Going to block pose at {self.block_pose},\n from current pose: {self.curr_pose}",
+                    f"Going to block located at {move_pose}",
                     throttle_duration_sec=1.0,
                 )
                 if reached:
