@@ -291,7 +291,7 @@ class RetrieveNode(Node):
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
                         min(abs(self.recovery_pose.position.y), 0.2), 0.05
                     )
-                elif self.recovery_pose.position.x > 0.3:
+                elif self.recovery_pose.position.x > 0.4:
                     self.logger.info(
                         f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
                         throttle_duration_sec=1.0,
