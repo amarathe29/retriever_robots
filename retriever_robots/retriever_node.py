@@ -263,7 +263,7 @@ class RetrieveNode(Node):
             # This state is just if we want the robot to return to the starting position
             elif self.state == State.RETURNING:
                 if self._start_pose is not None:
-                    goal_reached = self.go_to_pose(self._start_pose)
+                    goal_reached = self.go_to_pose(self._start_pose, controller=self.pose_controller_clf_constrained)
                     if goal_reached:
                         self.logger.info(
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
@@ -295,7 +295,7 @@ class RetrieveNode(Node):
                         throttle_duration_sec=1.0,
                     )
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
-                        min(abs(self.recovery_pose.position.y), 0.2), 0.05
+                        min(0.8 * abs(self.recovery_pose.position.y), 0.15), 0.05
                     )
                 elif self.recovery_pose.position.x > 0.45:
                     self.logger.info(
