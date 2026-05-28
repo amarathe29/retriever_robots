@@ -437,8 +437,8 @@ class RetrieveNode(Node):
         sa = np.sin(alpha)
 
         v = gamma * e * ca
-        # if forward_constraint:
-        #     v = max(0.0, v)
+        if forward_constraint:
+            v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
         w = k * alpha + gamma * (ca * sinc_alpha) * (alpha + h * theta_error_vec)
@@ -484,7 +484,7 @@ class RetrieveNode(Node):
         # return True #TODO: UNDO
 
         if controller is None:
-            controller = self.pose_controller_clf
+            controller = self.pose_controller
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
