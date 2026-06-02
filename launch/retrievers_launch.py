@@ -52,9 +52,10 @@ def generate_launch_description():
                 parameters=[
                     {
                         "port": "/dev/ttyUSB0",
-                        "frame_id": "base_link",
-                        "odom_frame_id": "odom",
-                        "tf_prefix": "rename_when_launching",
+                        "frame_id_odom": f"{namespace}/odom",
+                        "frame_id_base_link": f"{namespace}/base_link",
+                        "frame_id_bumper": f"{namespace}/bumper",
+                        "frame_id_sonar": f"{namespace}/sonar",
                     }
                 ],
                 arguments=["--ros-args", "--log-level", "warn"],
