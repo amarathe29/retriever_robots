@@ -54,7 +54,8 @@ class DetectBlock(Node):
         self.camera_frame = self._namespaced_frame("camera_link")
         self.camera_offset = np.array([[0.15], [0.0], [0.1]])
 
-        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 270, pitch=90+30, yaw = 0, units="degrees")
+        self.R_image_frame_to_robot = create_rotation_matrix(pitch = -90, units="degrees") @ create_rotation_matrix(roll = 90, units="degrees")
+        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 30, units="degrees") @ self.R_image_frame_to_robot
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()
@@ -141,37 +142,11 @@ class DetectBlock(Node):
 
                     # now, convert rvec and tvec into a Pose in the world frame
                     R_marker_to_cam, _ = cv2.Rodrigues(rvec)
-                    # Image X is robot -Y, Image Y is robot -Z, Image Z is robot X
-                    R_image_to_robot_axes = np.array(
-                        [
-                            [0, 0, 1],
-                            [-1, 0, 0],
-                            [0, -1, 0],
-                        ]
-                    )
-                    R_cam_angle_to_robot = create_rotation_matrix(
-                        pitch=30, units="degrees"
-                    )
+                    
+                    # Use tf to convert from camera frame to robot frame
+                    T_marker_to_robot = self.R_cam_angle_to_robot @ tvec
 
-                    R_cam_to_robot = R_cam_angle_to_robot @ R_image_to_robot_axes
-                    # R_yaw_correction = np.array(
-                    #     [
-                    #         [0, 1, 0],
-                    #         [-1, 0, 0],
-                    #         [0, 0, 1],
-                    #     ]
-                    # )
-                    R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-                    R_marker_to_robot = R_marker_to_robot
-
-                    T_cam_to_robot = np.array(
-                        [[-0.1], [0], [0]]
-                    )  # camera is 10cm in front of the robot axis
-
-                    T_marker_in_cam = tvec.reshape(3, 1)
-                    T_marker_to_robot = (
-                        R_cam_to_robot @ T_marker_in_cam + T_cam_to_robot
-                    )
+                    R_marker_to_robot = self.R_cam_angle_to_robot @ R_marker_to_cam
 
                     self.logger.debug(
                         f"Tag Detected: Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)",
