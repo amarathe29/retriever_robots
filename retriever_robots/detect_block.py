@@ -32,7 +32,9 @@ OBJ_PTS = np.array(
 )
 RETRIEVER_DICT = {
     "/asher": "aruco_20",
+    "asher": "aruco_20",
     "/mika": "aruco_21",
+    "mika": "aruco_21",
 }
 
 
@@ -112,6 +114,7 @@ class DetectBlock(Node):
 
 
         # while we're here, do the tag frame too
+        assert self.get_namespace() in RETRIEVER_DICT, f"Namespace {self.get_namespace()} not found in RETRIEVER_DICT"
         aruco_transform = TransformStamped()
         aruco_transform.header.stamp = self.get_clock().now().to_msg()
         aruco_transform.header.frame_id = self.base_frame
@@ -124,13 +127,19 @@ class DetectBlock(Node):
         aruco_transform.transform.rotation.z = 0.0
         aruco_transform.transform.rotation.w = 1.0
 
-        self.static_broadcaster.sendTransform([self.static_transform, aruco_transform])
-        self.logger.info(
-            f"Published static transform {self.base_frame} -> {self.camera_frame}"
-        )
-        self.logger.info(
-            f"Published static transform {RETRIEVER_DICT[self.get_namespace()]} -> {self.base_frame}"
-        )
+        try:
+            self.static_broadcaster.sendTransform([self.static_transform, aruco_transform])
+            self.logger.info(
+                f"Published static transform {self.base_frame} -> {self.camera_frame}"
+            )
+            self.logger.info(
+                f"Published static transform {self.base_frame} -> {aruco_transform.child_frame_id}"
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to broadcast transforms: {e}")
+            self.logger.info(
+                f"Published static transform {self.base_frame} -> {self.camera_frame}"
+            )
         
     def cam_callback(self, img_msg, cam_info_msg):
         self.camera_info_callback(cam_info_msg)
