@@ -136,6 +136,12 @@ class RetrieveNode(Node):
             State.RECOVERY,
         ]:
 
+            if self.curr_pose is None:
+                self.logger.warning(
+                    "Current pose is unknown, cannot set grab pose", throttle_duration_sec=1.0
+                )
+                return
+
             # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
             # should be colinear the orientation of the block.
             _, _, yaw = euler_from_quaternion(
@@ -508,9 +514,6 @@ class RetrieveNode(Node):
         return True
 
     def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
-        # for now, just pretend we went there
-        # self.logger.error(f"Gone to pose: {target_pose}")
-        # return True #TODO: UNDO
 
         if controller is None:
             controller = self.pose_controller_clf
@@ -520,6 +523,7 @@ class RetrieveNode(Node):
         reached = self.check_reached_target(target_pose)
         return reached
 
+    # TODO use the world frame and published aruco tags to update the robots position
     @property
     def curr_pose(self):
         if hasattr(self, "pose") and self.pose is not None:
