@@ -52,12 +52,12 @@ class DetectBlock(Node):
 
         self.base_frame = self._namespaced_frame("base_link")
         self.camera_frame = self._namespaced_frame("camera_link")
-        self.camera_offset = np.array([[-0.1], [0.0], [0.0]])
+        self.camera_offset = np.array([[0.15], [0.0], [0.1]])
         self.R_image_to_robot_axes = np.array(
             [
                 [0, 0, 1],
                 [-1, 0, 0],
-                [0, -1, 0],
+                [0, 1, 0],
             ]
         )
         self.R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units="degrees")
