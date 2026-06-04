@@ -144,6 +144,8 @@ class RetrieveNode(Node):
                 msg.pose.orientation.w,
             )
 
+            self.logger.warn(f"Yaw is {yaw} radians")
+
             positioning_distance = 0.2
             self.grab_pose = deepcopy(self.curr_pose)
             self.grab_pose.position.x += (
@@ -154,9 +156,10 @@ class RetrieveNode(Node):
             )
             self.grab_pose.position.z = 0.0
 
-            self.grab_pose.orientation = mult_quat_msgs(
-                self.block_pose.orientation, self.curr_pose.orientation
-            )
+            # we want to face the block, on axis
+            # 
+
+
 
             robot_grab_pose = PoseStamped()
             robot_grab_pose.header.stamp = self.get_clock().now().to_msg()
@@ -243,6 +246,7 @@ class RetrieveNode(Node):
 
             elif self.state == State.GRABBING:
                 # super naive, I'd rather put an bound on block position here
+                # I think this is where we take down our barriers on the specific block
                 move_pose = deepcopy(self.curr_pose)
                 move_pose.position.x += self.block_pose.position.x
                 move_pose.position.y += self.block_pose.position.y
