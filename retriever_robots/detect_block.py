@@ -53,15 +53,8 @@ class DetectBlock(Node):
         self.base_frame = self._namespaced_frame("base_link")
         self.camera_frame = self._namespaced_frame("camera_link")
         self.camera_offset = np.array([[0.15], [0.0], [0.1]])
-        self.R_image_to_robot_axes = np.array(
-            [
-                [0, 0, 1],
-                [-1, 0, 0],
-                [0, 1, 0],
-            ]
-        )
-        self.R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units="degrees")
-        self.R_cam_to_robot = self.R_cam_angle_to_robot @ self.R_image_to_robot_axes
+
+        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 270, pitch=90+30, yaw = 0, units="degrees")
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()
@@ -101,7 +94,7 @@ class DetectBlock(Node):
 
         # The stored R_cam_to_robot maps camera coordinates into robot coordinates.
         # For a TF from robot->camera, use the inverse rotation.
-        quat = Rotation.from_matrix(self.R_cam_to_robot.T).as_quat()
+        quat = Rotation.from_matrix(self.R_cam_angle_to_robot.T).as_quat()
         static_transform.transform.rotation.x = float(quat[0])
         static_transform.transform.rotation.y = float(quat[1])
         static_transform.transform.rotation.z = float(quat[2])
