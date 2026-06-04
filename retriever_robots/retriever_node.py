@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, PoseStamped
 from nav_msgs.msg import Odometry
 from retriever_msgs.action import GoToBlock  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
@@ -52,6 +52,10 @@ class RetrieveNode(Node):
             Twist, f"{self.get_namespace()}/cmd_vel", 10
         )
 
+        # for debug
+        self.grab_pub = self.create_publisher(PoseStamped, f"{self.get_namespace()}/grab_pose", 10)
+
+
         # Set up action server
         self.retrieve_action = ActionServer(
             self,
@@ -59,6 +63,7 @@ class RetrieveNode(Node):
             f"{self.get_namespace()}/gotoblock",
             self.retrieve_callback,
         )
+
 
         # Save the logger in ros1 style syntax, because wtf is with the self.get_logger() BS
         self.logger = self.get_logger()
@@ -125,6 +130,7 @@ class RetrieveNode(Node):
 
         # DO NOT ADD POSITIONING HERE!!!
         if self.state in [
+            State.IDLE, # for debug purposes
             State.NAVIGATING,
             State.RECOVERY,
         ]:
@@ -151,6 +157,14 @@ class RetrieveNode(Node):
             self.grab_pose.orientation = mult_quat_msgs(
                 self.block_pose.orientation, self.curr_pose.orientation
             )
+
+            robot_grab_pose = PoseStamped()
+            robot_grab_pose.header.stamp = self.get_clock().now().to_msg()
+            robot_grab_pose.header.frame_id = f"{self.get_namespace()}/odom"
+            robot_grab_pose.pose = self.grab_pose
+
+            self.grab_pub.publish(robot_grab_pose)
+
             self.logger.info(
                 f"found block at \n{self.print_pose_euler(self.block_pose)},\n setting grab pose to \n{self.print_pose_euler(self.grab_pose)}\n Current Pose is: \n{self.print_pose_euler(self.curr_pose)}\n",
                 throttle_duration_sec=5.0,
@@ -211,38 +225,37 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
                     self.positioning_pose = deepcopy(self.grab_pose)
-                    self.return_state = State.STOCKPILING
-                    self.state = State.RECOVERY
+                    self.state = State.POSITIONING
                 elif reached and self.enter_recovery:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = State.STOCKPILING
+                    self.return_state = State.POSITIONING
                     self.state = State.RECOVERY
 
-            # elif self.state == State.POSITIONING:
-            #     reached = self.go_to_pose(self.positioning_pose)
-            #     if reached:
-            #         self.logger.info(
-            #             f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
-            #         )
-            #         self.state = State.GRABBING
+            elif self.state == State.POSITIONING:
+                reached = self.go_to_pose(self.positioning_pose)
+                if reached:
+                    self.logger.info(
+                        f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
+                    )
+                    self.state = State.GRABBING
 
-            # elif self.state == State.GRABBING:
-            #     # super naive, I'd rather put an bound on block position here
-            #     move_pose = deepcopy(self.curr_pose)
-            #     move_pose.position.x += self.block_pose.position.x
-            #     move_pose.position.y += self.block_pose.position.y
-            #     reached = self.go_to_pose(move_pose)
-            #     self.logger.info(
-            #         f"Going to block located at {move_pose}",
-            #         throttle_duration_sec=1.0,
-            #     )
-            #     if reached:
-            #         self.logger.info(
-            #             f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
-            #         )
-            #         self.state = State.STOCKPILING
+            elif self.state == State.GRABBING:
+                # super naive, I'd rather put an bound on block position here
+                move_pose = deepcopy(self.curr_pose)
+                move_pose.position.x += self.block_pose.position.x
+                move_pose.position.y += self.block_pose.position.y
+                reached = self.go_to_pose(move_pose)
+                self.logger.info(
+                    f"Going to block located at {move_pose}",
+                    throttle_duration_sec=1.0,
+                )
+                if reached:
+                    self.logger.info(
+                        f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
+                    )
+                    self.state = State.STOCKPILING
 
             elif self.state == State.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality

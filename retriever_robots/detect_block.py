@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 import numpy as np
 from sensor_msgs.msg import Image, CameraInfo
-from geometry_msgs.msg import Twist, Pose, PoseStamped, TransformStamped
+from geometry_msgs.msg import Twist, PoseStamped, TransformStamped
 from cv_bridge import CvBridge
 import cv2
 import tf2_ros
@@ -143,16 +143,7 @@ class DetectBlock(Node):
                     self.distortion_coeffs,
                     flags=cv2.SOLVEPNP_IPPE_SQUARE,
                 )
-                if ok:
-
-                    # now, convert rvec and tvec into a Pose in the robot frame
-                    
-
-                    # self.logger.debug(
-                    #     f"Tag Detected: Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)",
-                    #     throttle_duration_sec=1.0,
-                    # )
-
+                if ok:                    
 
                     x, y, z, w = Rotation.from_rotvec(rvec.flatten()).as_quat()
 
@@ -168,12 +159,18 @@ class DetectBlock(Node):
                     camera_pose.pose.orientation.z = z
                     camera_pose.pose.orientation.w = w
 
-                    world_pose = do_transform_pose_stamped(camera_pose, self.static_transform)
+                    robot_pose = do_transform_pose_stamped(camera_pose, self.static_transform)
 
-                    self.debug_pub.publish(world_pose)
+                    self.debug_pub.publish(robot_pose)
 
                     pose_status.tag_in_frame = True
-                    pose_status.pose = world_pose.pose
+                    pose_status.pose = robot_pose.pose
+                    
+                    
+                    self.logger.info(
+                        f"Tag Detected: Marker center is {robot_pose.pose.position.x} m away,  {robot_pose.pose.position.y} m to the left, and {robot_pose.pose.position.z} m down)",
+                        throttle_duration_sec=1.0,
+                    )
 
                 else:
                     self.logger.debug(
