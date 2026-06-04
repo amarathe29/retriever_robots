@@ -17,7 +17,7 @@ def euler_from_quaternion(x: float, y: float, z: float, w: float) -> Rotation:
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: XYZ (Roll, Pitch, Yaw).
     """
-    return Rotation.from_quat([x, y, z, w], scalar_first=False).as_euler("XYZ")
+    return Rotation.from_quat([x, y, z, w]).as_euler("XYZ")
 
 
 def mult_quat_msgs(q1: Quaternion, q2: Quaternion) -> Quaternion:
@@ -25,8 +25,8 @@ def mult_quat_msgs(q1: Quaternion, q2: Quaternion) -> Quaternion:
     Multiplies two quaternions represented as geometry_msgs.msg.Quaternion.
     Returns the resulting quaternion as a geometry_msgs.msg.Quaternion.
     """
-    r1 = Rotation.from_quat([q1.x, q1.y, q1.z, q1.w], scalar_first=False)
-    r2 = Rotation.from_quat([q2.x, q2.y, q2.z, q2.w], scalar_first=False)
+    r1 = Rotation.from_quat([q1.x, q1.y, q1.z, q1.w])
+    r2 = Rotation.from_quat([q2.x, q2.y, q2.z, q2.w])
     r_result = r1 * r2
     q_result = r_result.as_quat()
 
