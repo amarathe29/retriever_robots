@@ -152,7 +152,7 @@ class RetrieveNode(Node):
             self.grab_pose.position.y += (
                 self.block_pose.position.y - positioning_distance * np.sin(yaw)
             )
-            self.grab_pose.position.z = 0
+            self.grab_pose.position.z = 0.0
 
             self.grab_pose.orientation = mult_quat_msgs(
                 self.block_pose.orientation, self.curr_pose.orientation
