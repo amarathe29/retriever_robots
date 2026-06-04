@@ -132,7 +132,7 @@ def get_robot_barrier_func(
     boundary_points: np.array = None,
     build_area_points: np.array = None,
     block_safety_radius: float = 0.15,
-) -> function:
+) -> callable:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.
 
