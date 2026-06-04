@@ -71,29 +71,17 @@ def angle_wrap(angle: float) -> float:
     wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
     return wrapped
 
-
-def si_to_uni_vel(dxi, pose):
-    linear_gain = 1
-    angular_limit = np.pi / 2
-
-    dxu = np.zeros((2, 1))
+def si_to_uni_vel(dxi, pose, projection_distance=0.03):
+    d = projection_distance
     h = pose[2]
-    e_fwd = np.array([np.cos(h), np.sin(h)])  # unit vector along heading
-    e_perp = np.array([-np.sin(h), np.cos(h)])  # unit vector perpendicular (left)
-
-    # Linear velocity: projection of dxi onto the heading direction.
-    dxu[0] = linear_gain * np.dot(e_fwd, dxi)
-
-    # Angular velocity: proportional to the angle between dxi and
-    # the heading, normalised so that a 90-degree error maps to angular_limit.
-    dxu[1] = (
-        angular_limit
-        * np.arctan2(np.dot(e_perp, dxi), np.dot(e_fwd, dxi))
-        / (np.pi / 2)
-    )
-
+    T_inv = np.array([
+        [np.cos(h), np.sin(h)],
+        [-np.sin(h) / d, np.cos(h) / d]
+    ])
+    
+    # Decoupled matrix multiplication
+    dxu = T_inv @ dxi.reshape(2, 1)
     return dxu
-
 
 def uni_to_si_vel(dxu, pose, projection_distance=0.05):
     d = projection_distance
@@ -112,7 +100,7 @@ def uni_to_si_vel(dxu, pose, projection_distance=0.05):
 def get_robot_barrier_func(
     safety_radius: float = 0.7,
     barrier_gain: float = 100.0,
-    magnitude_limit: float = 0.2,
+    magnitude_limit: float = 0.1,
     boundary_points: np.array = None,
     build_area_points: np.array = None,
     block_safety_radius: float = 0.15,
@@ -145,9 +133,12 @@ def get_robot_barrier_func(
         Returns:
             Twist: A safe velocity
         """
-        dxu = np.array([unsafe_cmd.linear.x], [unsafe_cmd.angular.z])
+        barrier_power = 3
+        dxu = np.array([[unsafe_cmd.linear.x], [unsafe_cmd.angular.z]])
+        projection_distance = 0.02
+
         # TODO: Convert Unicycle to SI, and then back
-        dxi = uni_to_si_vel(dxu, pose)
+        dxi = uni_to_si_vel(dxu, pose, projection_distance)
         M = (
             neighbor_positions.shape[1]
             if (neighbor_positions is not None and neighbor_positions.shape[1] > 0)
@@ -166,53 +157,59 @@ def get_robot_barrier_func(
             else np.array([1.5, 3, 0, 1.5])
         )
 
-        num_constraints = M + B + 4 + 4 + 8
+        num_constraints = M + B + 4 + 8 + 1
         A = np.zeros((num_constraints, 2))
         b = np.zeros(num_constraints)
-        position = pose[:2]
+        position =  np.array([pose[0] + projection_distance * np.cos(pose[2]),pose[1] + projection_distance * np.sin(pose[2])]).flatten()
+        constraint_idx = 0
+
         # Avoid neighbor constraings, we don't know neighbor vels, so we don't have our solver worry about them
         for neighbor_ndx in range(M):
             neighbor_position = neighbor_positions[:, neighbor_ndx]
             diff = position - neighbor_position
-            h = np.dot(diff, diff) - safety_radius**2
-            A[neighbor_ndx] = -2 * diff
-            b[neighbor_ndx] = barrier_gain * (h**3)
+            h = np.dot(diff, diff) - safety_radius ** 2
+            A[constraint_idx] = -2 * diff
+            b[constraint_idx] = barrier_gain * (h ** barrier_power)
+            constraint_idx += 1
 
         for block_ndx in range(B):
             block_position = block_positions[:, block_ndx]
             diff = position - block_position
             h = np.dot(diff, diff) - block_safety_radius**2
-            A[block_ndx] = -2 * diff
-            b[block_ndx] = barrier_gain * (h**3)
+            A[constraint_idx] = -2 * diff
+            b[constraint_idx] = barrier_gain * (h ** barrier_power)
+            constraint_idx += 1
 
         # Boundary constraints
-        row = M
-        A[row] = [0, 1]
-        b[row] = 0.4 * barrier_gain * (bp[3] - safety_radius / 2 - position[1]) ** 3
-        row += 1
-        A[row] = [0, -1]
-        b[row] = 0.4 * barrier_gain * (position[1] - bp[2] - safety_radius / 2) ** 3
-        row += 1
-        A[row] = [1, 0]
-        b[row] = 0.4 * barrier_gain * (bp[1] - safety_radius / 2 - position[0]) ** 3
-        row += 1
-        A[row] = [-1, 0]
-        b[row] = 0.4 * barrier_gain * (position[0] - bp[0] - safety_radius / 2) ** 3
-        row += 1
+        A[constraint_idx] = [0, 1]
+        b[constraint_idx] = 0.4 * barrier_gain * (bp[3] - safety_radius / 2 - position[1]) ** barrier_power
+        constraint_idx += 1
+        A[constraint_idx] = [0, -1]
+        b[constraint_idx] = 0.4 * barrier_gain * (position[1] - bp[2] - safety_radius / 2) ** barrier_power
+        constraint_idx += 1
+        A[constraint_idx] = [1, 0]
+        b[constraint_idx] = 0.4 * barrier_gain * (bp[1] - safety_radius / 2 - position[0]) ** barrier_power
+        constraint_idx += 1
+        A[constraint_idx] = [-1, 0]
+        b[constraint_idx] = 0.4 * barrier_gain * (position[0] - bp[0] - safety_radius / 2) ** barrier_power
+        constraint_idx += 1
 
         # Keep away constraints
-        A[row] = [0, -1]
-        b[row] = 0.4 * barrier_gain * (bap[3] - safety_radius / 2 - position[1]) ** 3
-        row += 1
-        A[row] = [0, 1]
-        b[row] = 0.4 * barrier_gain * (position[1] - bap[2] - safety_radius / 2) ** 3
-        row += 1
-        A[row] = [-1, 0]
-        b[row] = 0.4 * barrier_gain * (bap[1] - safety_radius / 2 - position[0]) ** 3
-        row += 1
-        A[row] = [1, 0]
-        b[row] = 0.4 * barrier_gain * (position[0] - bap[0] - safety_radius / 2) ** 3
-        row += 1
+        # We're approximating it as a circle because the box is too damn annoying
+        center_x = (bap[0] + bap[1]) / 2.0
+        center_y = (bap[2] + bap[3]) / 2.0
+        circle_center = np.array([center_x, center_y])
+
+        half_width = (bap[1] - bap[0]) / 2.0
+        half_height = (bap[3] - bap[2]) / 2.0
+        circle_radius = np.sqrt(half_width**2 + half_height**2)
+        diff = position - circle_center
+        buffer_zone = 0.03
+
+        h = np.linalg.norm(diff) - (circle_radius + buffer_zone)
+        A[constraint_idx] = -2 * diff
+        b[constraint_idx] = barrier_gain * (h ** barrier_power)
+        constraint_idx += 1
 
         constraint_bounds = magnitude_limit * np.cos(np.pi / 8)
         direction_constraint = [
@@ -226,9 +223,9 @@ def get_robot_barrier_func(
             [1 / np.sqrt(2), -1 / np.sqrt(2)],
         ]
         for d in direction_constraint:
-            A[row] = d
-            b[row] = constraint_bounds
-            row += 1
+            A[constraint_idx] = d
+            b[constraint_idx] = constraint_bounds
+            constraint_idx += 1
 
         P = matrix(np.eye(2))
         q = matrix(-dxi.astype(float))
@@ -237,10 +234,10 @@ def get_robot_barrier_func(
 
         sol = qp(P, q, G, h_vec)
         dxi_out = np.array([sol["x"][0], sol["x"][1]])
-        dxu_out = si_to_uni_vel(dxi_out, pose)
+        dxu_out = si_to_uni_vel(dxi_out, pose, projection_distance)
         out_cmd = Twist()
-        out_cmd.linear.x = dxu_out[0]
-        out_cmd.angular.z = dxu_out[1]
+        out_cmd.linear.x = dxu_out[0][0]
+        out_cmd.angular.z = dxu_out[1][0]
 
         return out_cmd
 
