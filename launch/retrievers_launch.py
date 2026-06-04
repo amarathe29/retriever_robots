@@ -68,6 +68,7 @@ def generate_launch_description():
                     "camera_namespace": namespace,
                     "depth_module.depth_profile": "640x360x30",
                     "rgb_camera.color_profile": "640x360x30",
+                    'publish_tf': 'false',
                 }.items(),
             ),
             # ros2 action send_goal /rename_when_launching/gotoblock retriever_msgs/action/GoToBlock   "{goal_pose: {position: {x: 1.3, y: -0.2, z: 0.0}, orientation:{x: 0.0, y: 0.0, z: 0.0, w: 1.0}}, block_type: 1}"
