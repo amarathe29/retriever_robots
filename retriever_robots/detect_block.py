@@ -111,12 +111,8 @@ class DetectBlock(Node):
         self.static_transform.transform.rotation.z = float(quat[2])
         self.static_transform.transform.rotation.w = float(quat[3])
 
-        self.static_broadcaster.sendTransform([self.static_transform])
-        self.logger.info(
-            f"Published static transform {self.base_frame} -> {self.camera_frame}"
-        )
 
-    def _broadcast_static_aruco_transform(self):
+        # while we're here, do the tag frame too
         aruco_transform = TransformStamped()
         aruco_transform.header.stamp = self.get_clock().now().to_msg()
         aruco_transform.header.frame_id = RETRIEVER_DICT[self.get_namespace()]
@@ -129,11 +125,14 @@ class DetectBlock(Node):
         aruco_transform.transform.rotation.z = 0.0
         aruco_transform.transform.rotation.w = 1.0
 
-        self.static_broadcaster.sendTransform([aruco_transform])
+        self.static_broadcaster.sendTransform([self.static_transform, aruco_transform])
+        self.logger.info(
+            f"Published static transform {self.base_frame} -> {self.camera_frame}"
+        )
         self.logger.info(
             f"Published static transform {RETRIEVER_DICT[self.get_namespace()]} -> {self.base_frame}"
         )
-
+        
     def cam_callback(self, img_msg, cam_info_msg):
         self.camera_info_callback(cam_info_msg)
         self.image_callback(img_msg)
