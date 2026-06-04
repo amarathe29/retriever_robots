@@ -33,6 +33,9 @@ OBJ_PTS = np.array(
 class DetectBlock(Node):
     def __init__(self, node_name):
         super().__init__(node_name)
+
+        self.logger = self.get_logger()
+
         self.bridge = CvBridge()
 
         self.pub = self.create_publisher(Twist, f"{self.get_namespace()}/cmd_vel", 10)
@@ -81,7 +84,6 @@ class DetectBlock(Node):
 
         self.ts.registerCallback(self.cam_callback)
 
-        self.logger = self.get_logger()
         self.logger.info(f"Launched Block Detection Node for {self.get_namespace()}")
 
     def _namespaced_frame(self, frame_name):
