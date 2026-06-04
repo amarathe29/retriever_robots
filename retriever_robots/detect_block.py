@@ -144,25 +144,22 @@ class DetectBlock(Node):
                 if ok:
 
                     # now, convert rvec and tvec into a Pose in the world frame
-                    R_marker_to_cam, _ = cv2.Rodrigues(rvec)
+                    # R_marker_to_cam, _ = cv2.Rodrigues(rvec)
                     
-                    # Use tf to convert from camera frame to robot frame
-                    T_marker_to_robot = self.R_cam_angle_to_robot @ tvec
+                    
 
-                    R_marker_to_robot = self.R_cam_angle_to_robot @ R_marker_to_cam
-
-                    self.logger.debug(
-                        f"Tag Detected: Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)",
-                        throttle_duration_sec=1.0,
-                    )
+                    # self.logger.debug(
+                    #     f"Tag Detected: Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)",
+                    #     throttle_duration_sec=1.0,
+                    # )
 
                     pose = Pose()
 
-                    pose.position.x = float(T_marker_to_robot[0])
-                    pose.position.y = float(T_marker_to_robot[1])
-                    pose.position.z = float(T_marker_to_robot[2])
+                    pose.position.x = float(tvec[0])
+                    pose.position.y = float(tvec[1])
+                    pose.position.z = float(tvec[2])
 
-                    x, y, z, w = Rotation.from_matrix(R_marker_to_robot).as_quat()
+                    x, y, z, w = Rotation.from_rotvec(rvec).as_quat()
                     pose.orientation.x = x
                     pose.orientation.y = y
                     pose.orientation.z = z
@@ -170,7 +167,7 @@ class DetectBlock(Node):
 
                     pose_stamped = PoseStamped()
                     pose_stamped.header.stamp = self.get_clock().now().to_msg()
-                    pose_stamped.header.frame_id = self.base_frame
+                    pose_stamped.header.frame_id = self.camera_frame
                     pose_stamped.pose = pose
 
                     self.debug_pub.publish(pose_stamped)
