@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 import numpy as np
 from sensor_msgs.msg import Image, CameraInfo
-from geometry_msgs.msg import Twist, Pose, TransformStamped
+from geometry_msgs.msg import Twist, Pose, PoseStamped, TransformStamped
 from cv_bridge import CvBridge
 import cv2
 import tf2_ros
@@ -43,6 +43,9 @@ class DetectBlock(Node):
         # communicates the location of the identified block back to the retriever node. This is a custom topic, not a standard ROS topic, so we can change it as needed.
         self.vis_pub = self.create_publisher(
             PoseStatus, f"{self.get_namespace()}/visible_block", 10
+        )
+
+        self.debug_pub = self.create_publisher(PoseStamped, f"{self.get_namespace()}/debug_block_pose", 10
         )
 
         self.camera_matrix = None
@@ -164,6 +167,13 @@ class DetectBlock(Node):
                     pose.orientation.y = y
                     pose.orientation.z = z
                     pose.orientation.w = w
+
+                    pose_stamped = PoseStamped()
+                    pose_stamped.header.stamp = self.get_clock().now().to_msg()
+                    pose_stamped.header.frame_id = self.base_frame
+                    pose_stamped.pose = pose
+
+                    self.debug_pub.publish(pose_stamped)
 
                     pose_status.tag_in_frame = True
                     pose_status.pose = pose

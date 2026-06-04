@@ -59,16 +59,12 @@ def create_rotation_matrix(
     """
     Creates a rotation matrix from roll, pitch, and yaw angles.
     """
-
     if units == "degrees":
         roll = np.radians(roll)
         pitch = np.radians(pitch)
         yaw = np.radians(yaw)
 
-    # use scipy's Rotation class to create the rotation matrix
-    R = Rotation.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
-
-    return R
+    return Rotation.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
 
 
 def angle_wrap(angle: float) -> float:
