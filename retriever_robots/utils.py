@@ -178,7 +178,7 @@ def get_robot_barrier_func(
             A[neighbor_ndx] = -2 * diff
             b[neighbor_ndx] = barrier_gain * (h**3)
 
-        for block_ndx in range(M):
+        for block_ndx in range(B):
             block_position = block_positions[:, block_ndx]
             diff = position - block_position
             h = np.dot(diff, diff) - block_safety_radius**2
