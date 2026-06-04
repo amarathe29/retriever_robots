@@ -159,7 +159,7 @@ class DetectBlock(Node):
                     pose.position.y = float(tvec[1])
                     pose.position.z = float(tvec[2])
 
-                    x, y, z, w = Rotation.from_rotvec(rvec).as_quat()
+                    x, y, z, w = Rotation.from_rotvec(rvec.flatten()).as_quat()
                     pose.orientation.x = x
                     pose.orientation.y = y
                     pose.orientation.z = z
