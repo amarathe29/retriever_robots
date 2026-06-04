@@ -5,7 +5,7 @@ from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, PoseStamped
 from nav_msgs.msg import Odometry
-from retriever_msgs.action import GoToBlock  # type: ignore
+from cc_interfaces.action import RetrievalTask  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
 from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs
@@ -59,8 +59,8 @@ class RetrieveNode(Node):
         # Set up action server
         self.retrieve_action = ActionServer(
             self,
-            GoToBlock,
-            f"{self.get_namespace()}/gotoblock",
+            RetrievalTask,
+            f"{self.get_namespace()}/retrieve_block",
             self.retrieve_callback,
         )
 
@@ -186,20 +186,17 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-    def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
+    def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
 
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
         if self.state != State.IDLE:
             self.logger.error(f"Already running an action")
             goal_handle.fail()
-            result = GoToBlock.Result()
-            result.success = True
-            result.end_pose = self.curr_pose
+            result = RetrievalTask.Result()
+            result.success = False
             return
 
-        feedback_msg = GoToBlock.Feedback()
-        feedback_msg.block_captured = False
 
         goal_reached = False
 
@@ -210,7 +207,7 @@ class RetrieveNode(Node):
             )
 
             if self.state == State.IDLE:
-                self.request_pose = goal_handle.request.goal_pose
+                self.request_pose = goal_handle.request.block.pose
                 self.grab_pose = None
                 self.marker_location = None
                 self.logger.info(
@@ -261,14 +258,14 @@ class RetrieveNode(Node):
 
             elif self.state == State.STOCKPILING:
                 # TODO: This should be changed to be the output of some function from the camera also add functionality
-                feedback_msg.block_captured = True
+                block_captured = True
                 reached = True
-                if feedback_msg.block_captured and reached:
+                if block_captured and reached:
                     self.logger.info(
                         f"[{self.state.name}]Stockpiled block, entering RETURNING state to return to start"
                     )
                     self.state = State.RETURNING
-                elif not feedback_msg.block_captured:
+                elif not block_captured:
                     self.logger.info(
                         f"[{self.state.name}]Failed to capture block, entering RECOVERY state to attempt recovery"
                     )
@@ -284,7 +281,7 @@ class RetrieveNode(Node):
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
                         )
                         goal_handle.succeed()
-                        result = GoToBlock.Result()
+                        result = RetrievalTask.Result()
                         result.success = True
                         result.end_pose = self.curr_pose
                         self.state = State.IDLE
@@ -337,12 +334,10 @@ class RetrieveNode(Node):
 
                 self.vel_pub.publish(cmd)
 
-            feedback_msg.curr_pose = self.curr_pose
-            goal_handle.publish_feedback(feedback_msg)
 
-        result = GoToBlock.Result()
+        result = RetrievalTask.Result()
         result.success = False
-        result.end_pose = self.curr_pose
+        # result.end_pose = self.curr_pose # we should somehow convey new pose
         # add gracefull returning to idle and the idle position here
         return result
 
