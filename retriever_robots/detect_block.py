@@ -7,6 +7,7 @@ from geometry_msgs.msg import Twist, Pose, PoseStamped, TransformStamped
 from cv_bridge import CvBridge
 import cv2
 import tf2_ros
+from tf2_geometry_msgs import do_transform_pose
 
 from retriever_robots.utils import create_rotation_matrix
 
@@ -15,6 +16,7 @@ from retriever_msgs.msg import PoseStatus
 import message_filters
 
 from scipy.spatial.transform import Rotation
+
 
 
 
@@ -88,23 +90,23 @@ class DetectBlock(Node):
         return f"{ns}/{frame_name}" if ns else frame_name
 
     def _broadcast_static_camera_transform(self):
-        static_transform = TransformStamped()
-        static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = self.base_frame
-        static_transform.child_frame_id = self.camera_frame
-        static_transform.transform.translation.x = float(self.camera_offset[0])
-        static_transform.transform.translation.y = float(self.camera_offset[1])
-        static_transform.transform.translation.z = float(self.camera_offset[2])
+        self.static_transform = TransformStamped()
+        self.static_transform.header.stamp = self.get_clock().now().to_msg()
+        self.static_transform.header.frame_id = self.base_frame
+        self.static_transform.child_frame_id = self.camera_frame
+        self.static_transform.transform.translation.x = float(self.camera_offset[0])
+        self.static_transform.transform.translation.y = float(self.camera_offset[1])
+        self.static_transform.transform.translation.z = float(self.camera_offset[2])
 
         # The stored R_cam_to_robot maps camera coordinates into robot coordinates.
         # For a TF from robot->camera, use the inverse rotation.
         quat = Rotation.from_matrix(self.R_cam_angle_to_robot.T).as_quat()
-        static_transform.transform.rotation.x = float(quat[0])
-        static_transform.transform.rotation.y = float(quat[1])
-        static_transform.transform.rotation.z = float(quat[2])
-        static_transform.transform.rotation.w = float(quat[3])
+        self.static_transform.transform.rotation.x = float(quat[0])
+        self.static_transform.transform.rotation.y = float(quat[1])
+        self.static_transform.transform.rotation.z = float(quat[2])
+        self.static_transform.transform.rotation.w = float(quat[3])
 
-        self.static_broadcaster.sendTransform([static_transform])
+        self.static_broadcaster.sendTransform([self.static_transform])
         self.logger.info(
             f"Published static transform {self.base_frame} -> {self.camera_frame}"
         )
@@ -143,9 +145,7 @@ class DetectBlock(Node):
                 )
                 if ok:
 
-                    # now, convert rvec and tvec into a Pose in the world frame
-                    # R_marker_to_cam, _ = cv2.Rodrigues(rvec)
-                    
+                    # now, convert rvec and tvec into a Pose in the robot frame
                     
 
                     # self.logger.debug(
@@ -153,27 +153,29 @@ class DetectBlock(Node):
                     #     throttle_duration_sec=1.0,
                     # )
 
-                    pose = Pose()
 
-                    pose.position.x = float(tvec[0])
-                    pose.position.y = float(tvec[1])
-                    pose.position.z = float(tvec[2])
 
                     x, y, z, w = Rotation.from_rotvec(rvec.flatten()).as_quat()
-                    pose.orientation.x = x
-                    pose.orientation.y = y
-                    pose.orientation.z = z
-                    pose.orientation.w = w
+
 
                     pose_stamped = PoseStamped()
                     pose_stamped.header.stamp = self.get_clock().now().to_msg()
                     pose_stamped.header.frame_id = self.camera_frame
-                    pose_stamped.pose = pose
+                    pose_stamped.pose.position.x = float(tvec[0])
+                    pose_stamped.pose.position.y = float(tvec[1])
+                    pose_stamped.pose.position.z = float(tvec[2])
+                    pose_stamped.pose.orientation.x = x
+                    pose_stamped.pose.orientation.y = y
+                    pose_stamped.pose.orientation.z = z
+                    pose_stamped.pose.orientation.w = w
 
-                    self.debug_pub.publish(pose_stamped)
+
+                    world_pose = do_transform_pose(pose_stamped, self.static_transform)
+
+                    self.debug_pub.publish(world_pose)
 
                     pose_status.tag_in_frame = True
-                    pose_status.pose = pose
+                    pose_status.pose = world_pose.pose
 
                 else:
                     self.logger.debug(
