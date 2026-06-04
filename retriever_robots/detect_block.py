@@ -7,7 +7,7 @@ from geometry_msgs.msg import Twist, Pose, PoseStamped, TransformStamped
 from cv_bridge import CvBridge
 import cv2
 import tf2_ros
-from tf2_geometry_msgs import do_transform_pose
+from tf2_geometry_msgs import do_transform_pose_stamped
 
 from retriever_robots.utils import create_rotation_matrix
 
@@ -154,23 +154,21 @@ class DetectBlock(Node):
                     # )
 
 
-
                     x, y, z, w = Rotation.from_rotvec(rvec.flatten()).as_quat()
 
 
-                    pose_stamped = PoseStamped()
-                    pose_stamped.header.stamp = self.get_clock().now().to_msg()
-                    pose_stamped.header.frame_id = self.camera_frame
-                    pose_stamped.pose.position.x = float(tvec[0])
-                    pose_stamped.pose.position.y = float(tvec[1])
-                    pose_stamped.pose.position.z = float(tvec[2])
-                    pose_stamped.pose.orientation.x = x
-                    pose_stamped.pose.orientation.y = y
-                    pose_stamped.pose.orientation.z = z
-                    pose_stamped.pose.orientation.w = w
+                    camera_pose = PoseStamped()
+                    camera_pose.header.stamp = self.get_clock().now().to_msg()
+                    camera_pose.header.frame_id = self.camera_frame
+                    camera_pose.pose.position.x = float(tvec[0])
+                    camera_pose.pose.position.y = float(tvec[1])
+                    camera_pose.pose.position.z = float(tvec[2])
+                    camera_pose.pose.orientation.x = x
+                    camera_pose.pose.orientation.y = y
+                    camera_pose.pose.orientation.z = z
+                    camera_pose.pose.orientation.w = w
 
-
-                    world_pose = do_transform_pose(pose_stamped, self.static_transform)
+                    world_pose = do_transform_pose_stamped(camera_pose, self.static_transform)
 
                     self.debug_pub.publish(world_pose)
 
