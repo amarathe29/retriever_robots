@@ -115,11 +115,11 @@ class DetectBlock(Node):
         # while we're here, do the tag frame too
         aruco_transform = TransformStamped()
         aruco_transform.header.stamp = self.get_clock().now().to_msg()
-        aruco_transform.header.frame_id = RETRIEVER_DICT[self.get_namespace()]
-        aruco_transform.child_frame_id = self.base_frame
-        aruco_transform.transform.translation.x = 0.14
+        aruco_transform.header.frame_id = self.base_frame
+        aruco_transform.child_frame_id = RETRIEVER_DICT[self.get_namespace()]
+        aruco_transform.transform.translation.x = -0.14
         aruco_transform.transform.translation.y = 0.0
-        aruco_transform.transform.translation.z = 0.24
+        aruco_transform.transform.translation.z = -0.24
         aruco_transform.transform.rotation.x = 0.0
         aruco_transform.transform.rotation.y = 0.0
         aruco_transform.transform.rotation.z = 0.0
