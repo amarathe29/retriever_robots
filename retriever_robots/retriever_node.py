@@ -6,6 +6,7 @@ from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import Twist, Pose, PoseStamped
 from nav_msgs.msg import Odometry
 from cc_interfaces.action import RetrievalTask  # type: ignore
+from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
 from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs
@@ -207,6 +208,7 @@ class RetrieveNode(Node):
             )
 
             if self.state == State.IDLE:
+                # TODO: handle tf tree
                 self.request_pose = goal_handle.request.block.pose
                 self.grab_pose = None
                 self.marker_location = None
@@ -283,7 +285,10 @@ class RetrieveNode(Node):
                         goal_handle.succeed()
                         result = RetrievalTask.Result()
                         result.success = True
-                        result.end_pose = self.curr_pose
+                        result.delivered = Block()
+                        result.delivered.pose.pose = self.block_pose if self.block_pose is not None else Pose()
+                        result.delivered.pose.header.stamp = self.get_clock().now().to_msg()
+                        result.delivered.pose.header.frame_id = f"{self.get_namespace()}/odom"
                         self.state = State.IDLE
                         return result
 
@@ -337,7 +342,10 @@ class RetrieveNode(Node):
 
         result = RetrievalTask.Result()
         result.success = False
-        # result.end_pose = self.curr_pose # we should somehow convey new pose
+        result.delivered = Block()
+        result.delivered.pose.pose = self.block_pose if self.block_pose is not None else Pose()
+        result.delivered.pose.header.stamp = self.get_clock().now().to_msg()
+        result.delivered.pose.header.frame_id = f"{self.get_namespace()}/odom"
         # add gracefull returning to idle and the idle position here
         return result
 
