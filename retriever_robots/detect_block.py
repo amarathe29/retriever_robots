@@ -3,9 +3,10 @@ from rclpy.node import Node
 
 import numpy as np
 from sensor_msgs.msg import Image, CameraInfo
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, TransformStamped
 from cv_bridge import CvBridge
 import cv2
+import tf2_ros
 
 from retriever_robots.utils import create_rotation_matrix
 
@@ -14,6 +15,8 @@ from retriever_msgs.msg import PoseStatus
 import message_filters
 
 from scipy.spatial.transform import Rotation
+
+
 
 MARKER_SIZE = 0.0544
 OBJ_PTS = np.array(
@@ -44,6 +47,22 @@ class DetectBlock(Node):
         self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_APRILTAG_25h9)
         self.parameters = cv2.aruco.DetectorParameters_create()
 
+        self.base_frame = self._namespaced_frame("base_link")
+        self.camera_frame = self._namespaced_frame("camera_link")
+        self.camera_offset = np.array([[-0.1], [0.0], [0.0]])
+        self.R_image_to_robot_axes = np.array(
+            [
+                [0, 0, 1],
+                [-1, 0, 0],
+                [0, -1, 0],
+            ]
+        )
+        self.R_cam_angle_to_robot = create_rotation_matrix(pitch=30, units="degrees")
+        self.R_cam_to_robot = self.R_cam_angle_to_robot @ self.R_image_to_robot_axes
+
+        self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
+        self._broadcast_static_camera_transform()
+
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
         )
@@ -64,6 +83,32 @@ class DetectBlock(Node):
 
         self.logger = self.get_logger()
         self.logger.info(f"Launched Block Detection Node for {self.get_namespace()}")
+
+    def _namespaced_frame(self, frame_name):
+        ns = self.get_namespace().strip("/")
+        return f"{ns}/{frame_name}" if ns else frame_name
+
+    def _broadcast_static_camera_transform(self):
+        static_transform = TransformStamped()
+        static_transform.header.stamp = self.get_clock().now().to_msg()
+        static_transform.header.frame_id = self.base_frame
+        static_transform.child_frame_id = self.camera_frame
+        static_transform.transform.translation.x = float(self.camera_offset[0])
+        static_transform.transform.translation.y = float(self.camera_offset[1])
+        static_transform.transform.translation.z = float(self.camera_offset[2])
+
+        # The stored R_cam_to_robot maps camera coordinates into robot coordinates.
+        # For a TF from robot->camera, use the inverse rotation.
+        quat = Rotation.from_matrix(self.R_cam_to_robot.T).as_quat()
+        static_transform.transform.rotation.x = float(quat[0])
+        static_transform.transform.rotation.y = float(quat[1])
+        static_transform.transform.rotation.z = float(quat[2])
+        static_transform.transform.rotation.w = float(quat[3])
+
+        self.static_broadcaster.sendTransform([static_transform])
+        self.logger.info(
+            f"Published static transform {self.base_frame} -> {self.camera_frame}"
+        )
 
     def cam_callback(self, img_msg, cam_info_msg):
         self.camera_info_callback(cam_info_msg)
