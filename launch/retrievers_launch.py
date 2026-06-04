@@ -51,11 +51,12 @@ def generate_launch_description():
                 remappings=[("pose", "odom")],
                 parameters=[
                     {
-                        "port": "/dev/ttyUSB0",
-                        "frame_id_odom": f"{namespace}/odom",
-                        "frame_id_base_link": f"{namespace}/base_link",
-                        "frame_id_bumper": f"{namespace}/bumper",
-                        "frame_id_sonar": f"{namespace}/sonar",
+                        "serial_port": "/dev/ttyUSB0",
+                        "frame_id_prefix": namespace,
+                        "frame_id_odom": "/odom",
+                        "frame_id_base_link": "/base_link",
+                        "frame_id_bumper": "/bumper",
+                        "frame_id_sonar": "/sonar",
                     }
                 ],
                 arguments=["--ros-args", "--log-level", "warn"],
