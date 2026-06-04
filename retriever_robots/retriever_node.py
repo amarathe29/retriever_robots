@@ -142,9 +142,9 @@ class RetrieveNode(Node):
                 msg.pose.orientation.y,
                 msg.pose.orientation.z,
                 msg.pose.orientation.w,
+                use_extrinsics=True,
             )
 
-            self.logger.warn(f"Yaw is {yaw} radians")
 
             positioning_distance = 0.2
             self.grab_pose = deepcopy(self.curr_pose)
@@ -156,9 +156,7 @@ class RetrieveNode(Node):
             )
             self.grab_pose.position.z = 0.0
 
-            # we want to face the block, on axis
-            # 
-
+            self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation)
 
 
             robot_grab_pose = PoseStamped()

@@ -12,12 +12,12 @@ options["feastol"] = 1e-2
 options["maxiters"] = 50
 
 
-def euler_from_quaternion(x: float, y: float, z: float, w: float) -> Rotation:
+def euler_from_quaternion(x: float, y: float, z: float, w: float, use_extrinsics: bool = False) -> Rotation:
     """
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: XYZ (Roll, Pitch, Yaw).
     """
-    return Rotation.from_quat([x, y, z, w]).as_euler("XYZ")
+    return Rotation.from_quat([x, y, z, w]).as_euler("XYZ" if not use_extrinsics else "xyz")
 
 
 def mult_quat_msgs(q1: Quaternion, q2: Quaternion) -> Quaternion:
