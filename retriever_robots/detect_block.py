@@ -68,7 +68,6 @@ class DetectBlock(Node):
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()
-        self._broadcast_static_aruco_transform()
 
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
