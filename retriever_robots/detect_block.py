@@ -30,6 +30,10 @@ OBJ_PTS = np.array(
     ],
     dtype=np.float64,
 )
+RETRIEVER_DICT = {
+    "/asher": "aruco_20",
+    "/mika": "aruco_21",
+}
 
 
 class DetectBlock(Node):
@@ -64,6 +68,7 @@ class DetectBlock(Node):
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()
+        self._broadcast_static_aruco_transform()
 
         self.color_sub = message_filters.Subscriber(
             self, Image, f"{self.get_namespace()}/camera/color/image_raw"
@@ -109,6 +114,24 @@ class DetectBlock(Node):
         self.static_broadcaster.sendTransform([self.static_transform])
         self.logger.info(
             f"Published static transform {self.base_frame} -> {self.camera_frame}"
+        )
+
+    def _broadcast_static_aruco_transform(self):
+        aruco_transform = TransformStamped()
+        aruco_transform.header.stamp = self.get_clock().now().to_msg()
+        aruco_transform.header.frame_id = RETRIEVER_DICT[self.get_namespace()]
+        aruco_transform.child_frame_id = self.base_frame
+        aruco_transform.transform.translation.x = 0.14
+        aruco_transform.transform.translation.y = 0.0
+        aruco_transform.transform.translation.z = 0.24
+        aruco_transform.transform.rotation.x = 0.0
+        aruco_transform.transform.rotation.y = 0.0
+        aruco_transform.transform.rotation.z = 0.0
+        aruco_transform.transform.rotation.w = 1.0
+
+        self.static_broadcaster.sendTransform([aruco_transform])
+        self.logger.info(
+            f"Published static transform {RETRIEVER_DICT[self.get_namespace()]} -> {self.base_frame}"
         )
 
     def cam_callback(self, img_msg, cam_info_msg):
