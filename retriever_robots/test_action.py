@@ -42,11 +42,25 @@ class RetrieverActionTestNode(Node):
 
 
     def handle_result(self, future):
+
+        self.goal_handle = future.result()
+
+        if not self.goal_handle.accepted:
+            self.get_logger().info('Goal rejected')
+            return
+
+        self.result_handle = self.goal_handle.get_result_async()
+        self.result_handle.add_done_callback(self.process_result)
+
+    def process_result(self, future):
         result = future.result().result
+
         if result.success:
-            self.get_logger().info("Retrieval succeeded!")
+            self.get_logger().info(f"Action returned success: {result.delivered}")
         else:
-            self.get_logger().info("Retrieval failed.")
+            self.get_logger().info(f"Action Failed: {result.delivered}")
+
+
 
 def main():
     rclpy.init()
