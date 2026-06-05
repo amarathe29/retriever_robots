@@ -11,7 +11,7 @@ import numpy as np
 class RetrieverActionTestNode(Node):
     def __init__(self):
         super().__init__("retriever_action_test_node")
-        self.retrieve_action_client = ActionClient(self, RetrievalTask, "retrieve_block")
+        self.retrieve_action_client = ActionClient(self, RetrievalTask, "asher/retrieve_block")
 
     def send_retrieval_goal(self, position, stockpile, quat=None):
         x,y,_ = position
@@ -28,13 +28,13 @@ class RetrieverActionTestNode(Node):
         goal_msg.block.pose.pose.orientation.z = quat[2]
         goal_msg.block.pose.pose.orientation.w = quat[3]
 
-        stockpile = PolygonStamped()
-        stockpile.polygon.points = [Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
+        stockpile_msg = PolygonStamped()
+        stockpile_msg.polygon.points = [Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
                                     Point32(x=stockpile[1][0], y=stockpile[1][1], z=0.0),
                                     Point32(x=stockpile[2][0], y=stockpile[2][1], z=0.0),
                                     Point32(x=stockpile[3][0], y=stockpile[3][1], z=0.0)]
 
-        goal_msg.stockpile = stockpile
+        goal_msg.stockpile = stockpile_msg
 
         self.retrieve_action_client.wait_for_server()
         goal = self.retrieve_action_client.send_goal_async(goal_msg)
@@ -48,7 +48,7 @@ class RetrieverActionTestNode(Node):
         else:
             self.get_logger().info("Retrieval failed.")
 
-if __name__ == "__main__":
+def main():
     rclpy.init()
     point = [1.0, 0.0, 0.0]
     stockpile = 2*np.ones((4,2)) 
