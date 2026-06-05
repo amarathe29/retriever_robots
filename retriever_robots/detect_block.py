@@ -117,9 +117,9 @@ class DetectBlock(Node):
         assert self.get_namespace() in RETRIEVER_DICT, f"Namespace {self.get_namespace()} not found in RETRIEVER_DICT"
         aruco_transform = TransformStamped()
         aruco_transform.header.stamp = self.get_clock().now().to_msg()
-        aruco_transform.header.frame_id = self.base_frame
-        aruco_transform.child_frame_id = RETRIEVER_DICT[self.get_namespace()]
-        aruco_transform.transform.translation.x = -0.14
+        aruco_transform.header.frame_id = RETRIEVER_DICT[self.get_namespace()]
+        aruco_transform.child_frame_id = f"{self.get_namespace()}/basis_link" # this is a bit of a hack, but we don't have to fight the tf tree
+        aruco_transform.transform.translation.x = 0.14
         aruco_transform.transform.translation.y = 0.0
         aruco_transform.transform.translation.z = -0.24
         aruco_transform.transform.rotation.x = 0.0
