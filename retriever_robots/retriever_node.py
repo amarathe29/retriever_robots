@@ -243,6 +243,9 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
+                    self.brake()
+                    rate = self.create_rate(1.0)
+                    rate.sleep()
                     self.positioning_pose = deepcopy(self.grab_pose)
                     self.state = State.POSITIONING
                 elif reached and self.enter_recovery:
@@ -541,6 +544,9 @@ class RetrieveNode(Node):
         self.vel_pub.publish(cmd)
         reached = self.check_reached_target(target_pose)
         return reached
+
+    def brake(self):
+        self.vel_pub.publish(Twist())
 
     # TODO use the world frame and published aruco tags to update the robots position
     @property
