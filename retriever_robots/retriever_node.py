@@ -5,6 +5,7 @@ from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, PoseStamped
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Bool
 from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
@@ -32,9 +33,6 @@ class RetrieveNode(Node):
     def __init__(self, node_name, *args):
         super(RetrieveNode, self).__init__(node_name)
         # Set up subscribers
-        self.bev_pose_sub = self.create_subscription(
-            Pose, f"{self.get_namespace()}/pose", self.pose_callback, 10
-        )
         self.odom_sub = self.create_subscription(
             Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
@@ -45,6 +43,13 @@ class RetrieveNode(Node):
             PoseStatus,
             f"{self.get_namespace()}/visible_block",
             self.visible_block_callback,
+            10,
+        )
+
+        self.frame_ref_sub = self.create_subscription(
+            Bool,
+            f"{self.get_namespace()}/world_conversion_active",
+            self.update_odom_state,
             10,
         )
 
@@ -83,13 +88,8 @@ class RetrieveNode(Node):
         self.visible_count = 0
         self.recovery_pose = None
         self.enter_recovery = False
+        self.valid_tf_tree = False
 
-    def pose_callback(self, msg: Pose) -> None:
-        self.logger.debug(f"Received Pose: {msg}")
-        self.pose = msg
-        if not self.start_pose_set:
-            self._start_pose = self.pose
-            self.start_pose_set = True
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
@@ -97,6 +97,9 @@ class RetrieveNode(Node):
         if self._start_pose is None:
             self._start_pose = self.odom.pose.pose
             self.start_pose_set = True
+
+    def update_odom_state(self, valid_msg: Bool):
+        self.valid_tf_tree = valid_msg.data
 
     def visible_block_callback(self, msg: Pose) -> None:
 
@@ -215,7 +218,7 @@ class RetrieveNode(Node):
 
             if self.state == State.IDLE:
                 # TODO: handle tf tree
-                self.request_pose = goal_handle.request.block.pose
+                self.request_pose = goal_handle.request.block.pose.pose
                 self.grab_pose = None
                 self.marker_location = None
                 self.logger.info(

@@ -18,8 +18,6 @@ import message_filters
 from scipy.spatial.transform import Rotation
 
 
-
-
 MARKER_SIZE = 0.0544
 OBJ_PTS = np.array(
     [
@@ -30,12 +28,6 @@ OBJ_PTS = np.array(
     ],
     dtype=np.float64,
 )
-RETRIEVER_DICT = {
-    "/asher": "aruco_20",
-    "asher": "aruco_20",
-    "/mika": "aruco_21",
-    "mika": "aruco_21",
-}
 
 
 class DetectBlock(Node):
@@ -113,28 +105,12 @@ class DetectBlock(Node):
         self.static_transform.transform.rotation.w = float(quat[3])
 
 
-        # while we're here, do the tag frame too
-        assert self.get_namespace() in RETRIEVER_DICT, f"Namespace {self.get_namespace()} not found in RETRIEVER_DICT"
-        aruco_transform = TransformStamped()
-        aruco_transform.header.stamp = self.get_clock().now().to_msg()
-        aruco_transform.header.frame_id = RETRIEVER_DICT[self.get_namespace()]
-        aruco_transform.child_frame_id = f"{self.get_namespace()}/basis_link" # this is a bit of a hack, but we don't have to fight the tf tree
-        aruco_transform.transform.translation.x = 0.14
-        aruco_transform.transform.translation.y = 0.0
-        aruco_transform.transform.translation.z = -0.24
-        aruco_transform.transform.rotation.x = 0.0
-        aruco_transform.transform.rotation.y = 0.0
-        aruco_transform.transform.rotation.z = 0.0
-        aruco_transform.transform.rotation.w = 1.0
-
         try:
-            self.static_broadcaster.sendTransform([self.static_transform, aruco_transform])
+            self.static_broadcaster.sendTransform([self.static_transform])
             self.logger.info(
                 f"Published static transform {self.base_frame} -> {self.camera_frame}"
             )
-            self.logger.info(
-                f"Published static transform {self.base_frame} -> {aruco_transform.child_frame_id}"
-            )
+
         except Exception as e:
             self.logger.error(f"Failed to broadcast transforms: {e}")
             self.logger.info(

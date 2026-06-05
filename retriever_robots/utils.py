@@ -2,7 +2,7 @@ import math
 import numpy as np
 
 from scipy.spatial.transform import Rotation
-from geometry_msgs.msg import Quaternion, Twist
+from geometry_msgs.msg import Quaternion, Twist, TransformStamped
 from cvxopt import matrix, sparse
 from cvxopt.solvers import qp, options
 
@@ -11,6 +11,42 @@ options["reltol"] = 1e-2
 options["feastol"] = 1e-2
 options["maxiters"] = 50
 
+
+def do_transform_transform(t1: TransformStamped, t2: TransformStamped):
+    # given two transforms, produce t1 * t2
+    T1 = convert_transform_to_matrix(t1)
+    T2 = convert_transform_to_matrix(t2)
+
+    T_result = T1 @ T2
+    result = TransformStamped()
+    result.header.stamp = t1.header.stamp
+    result.header.frame_id = t1.header.frame_id
+    result.child_frame_id = t2.child_frame_id
+    result.transform.translation.x = T_result[0, 3]
+    result.transform.translation.y = T_result[1, 3]
+    result.transform.translation.z = T_result[2, 3]
+    r = Rotation.from_matrix(T_result[0:3, 0:3]).as_quat()
+    result.transform.rotation.x = r[0]
+    result.transform.rotation.y = r[1]
+    result.transform.rotation.z = r[2]
+    result.transform.rotation.w = r[3]
+    return result
+
+
+def convert_transform_to_matrix(transform: TransformStamped):
+    T = np.eye(4)
+    T[0:3, 0:3] = Rotation.from_quat([
+        transform.transform.rotation.x,
+        transform.transform.rotation.y,
+        transform.transform.rotation.z,
+        transform.transform.rotation.w,
+    ]).as_matrix()
+    T[0:3, 3] = np.array([
+        transform.transform.translation.x,
+        transform.transform.translation.y,
+        transform.transform.translation.z,
+    ])
+    return T
 
 def euler_from_quaternion(x: float, y: float, z: float, w: float, use_extrinsics: bool = False) -> Rotation:
     """

@@ -43,6 +43,14 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", "info"],
             ),
             Node(
+                package="retriever_robots",
+                executable="do_world_conversion",
+                name="do_world_conversion",
+                namespace=namespace,
+                output="screen",
+                arguments=["--ros-args", "--log-level", "info"],
+            ),
+            Node(
                 package="rosaria2",
                 executable="rosaria2_debug",
                 name="rosaria2_node",
