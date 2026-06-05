@@ -170,14 +170,16 @@ class RetrieveNode(Node):
             dist1 = np.linalg.norm(current-p1)
             dist2 = np.linalg.norm(current-p2)
 
+            self.logger.info(f"Distances: {dist1:.2f}, {dist2:.2f}")
+
             if dist1 < dist2:
                 pose.position.x += p1[0]
                 pose.position.y += p1[1]
-                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation, flip_yaw=True)
+                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation)
             else:
                 pose.position.x += p2[0]
                 pose.position.y += p2[1]
-                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation)
+                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation, flip_yaw=True)
 
             self.grab_pose = pose
             robot_grab_pose = PoseStamped()
