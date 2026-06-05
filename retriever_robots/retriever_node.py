@@ -157,7 +157,7 @@ class RetrieveNode(Node):
 
 
             positioning_distance = 0.2
-            self.grab_pose = deepcopy(self.curr_pose)
+            pose = deepcopy(self.curr_pose)
 
             # find both sides of the block, then drive to whichever is closest
 
@@ -166,20 +166,20 @@ class RetrieveNode(Node):
 
             # calculate whichever one is closer to curr_pose
 
-            current = np.array([self.grab_pose.position.x, self.grab_pose.position.y])
+            current = np.array([pose.position.x, pose.position.y])
             dist1 = np.linalg.norm(current-p1)
             dist2 = np.linalg.norm(current-p2)
 
             if dist1 < dist2:
-                self.grab_pose.position.x += p1[0]
-                self.grab_pose.position.y += p1[1]
-                self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation)
+                pose.position.x += p1[0]
+                pose.position.y += p1[1]
+                pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation)
             else:
-                self.grab_pose.position.x += p2[0]
-                self.grab_pose.position.y += p2[1]
-                self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation, flip_yaw=True)
+                pose.position.x += p2[0]
+                pose.position.y += p2[1]
+                pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation, flip_yaw=True)
 
-
+            self.grab_pose = pose
             robot_grab_pose = PoseStamped()
             robot_grab_pose.header.stamp = self.get_clock().now().to_msg()
             robot_grab_pose.header.frame_id = f"{self.get_namespace()}/odom"
