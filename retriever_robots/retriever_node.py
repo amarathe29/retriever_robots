@@ -253,11 +253,13 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                reached = self.go_to_pose(self.positioning_pose, controller=self.pose_controller)
+                reached = self.go_to_pose(self.positioning_pose)
                 if reached:
+                    
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
                     )
+                    continue
                     self.state = State.GRABBING
 
             elif self.state == State.GRABBING:

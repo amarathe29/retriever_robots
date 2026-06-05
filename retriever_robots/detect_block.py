@@ -153,7 +153,6 @@ class DetectBlock(Node):
 
                     x, y, z, w = Rotation.from_rotvec(rvec.flatten()).as_quat()
 
-
                     camera_pose = PoseStamped()
                     camera_pose.header.stamp = self.get_clock().now().to_msg()
                     camera_pose.header.frame_id = self.camera_frame
