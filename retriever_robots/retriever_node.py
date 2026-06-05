@@ -134,7 +134,7 @@ class RetrieveNode(Node):
 
         # DO NOT ADD POSITIONING HERE!!!
         if self.state in [
-            State.IDLE, # for debug purposes
+            State.IDLE, #DEBUG
             State.NAVIGATING,
             State.RECOVERY,
         ]:
@@ -158,15 +158,26 @@ class RetrieveNode(Node):
 
             positioning_distance = 0.2
             self.grab_pose = deepcopy(self.curr_pose)
-            self.grab_pose.position.x += (
-                self.block_pose.position.x - positioning_distance * np.cos(yaw)
-            )
-            self.grab_pose.position.y += (
-                self.block_pose.position.y - positioning_distance * np.sin(yaw)
-            )
-            self.grab_pose.position.z = 0.0
 
-            self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation)
+            # find both sides of the block, then drive to whichever is closest
+
+            p1 = np.array([self.block_pose.position.x - positioning_distance * np.cos(yaw), self.block_pose.position.y - positioning_distance * np.sin(yaw)])
+            p2 = np.array([self.block_pose.position.x + positioning_distance * np.cos(yaw), self.block_pose.position.y + positioning_distance * np.sin(yaw)])
+
+            # calculate whichever one is closer to curr_pose
+
+            current = np.array([self.grab_pose.position.x, self.grab_pose.position.y])
+            dist1 = np.linalg.norm(current-p1)
+            dist2 = np.linalg.norm(current-p2)
+
+            if dist1 < dist2:
+                self.grab_pose.position.x += p1[0]
+                self.grab_pose.position.y += p1[1]
+                self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation)
+            else:
+                self.grab_pose.position.x += p2[0]
+                self.grab_pose.position.y += p2[1]
+                self.grab_pose.orientation = mult_quat_msgs(msg.pose.orientation, self.grab_pose.orientation, flip_yaw=True)
 
 
             robot_grab_pose = PoseStamped()
@@ -227,7 +238,6 @@ class RetrieveNode(Node):
                 self.state = State.NAVIGATING
 
             elif self.state == State.NAVIGATING:
-                # continue  # TODO: undo
                 reached = self.go_to_pose(self.request_pose)
                 if self.grab_pose is not None:
                     self.logger.info(
@@ -243,7 +253,7 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
-                reached = self.go_to_pose(self.positioning_pose)
+                reached = self.go_to_pose(self.positioning_pose, controller=self.pose_controller)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"

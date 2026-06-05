@@ -56,7 +56,7 @@ def euler_from_quaternion(x: float, y: float, z: float, w: float, use_extrinsics
     return Rotation.from_quat([x, y, z, w]).as_euler("XYZ" if not use_extrinsics else "xyz")
 
 
-def mult_quat_msgs(q1: Quaternion, q2: Quaternion) -> Quaternion:
+def mult_quat_msgs(q1: Quaternion, q2: Quaternion, flip_yaw=False) -> Quaternion:
     """
     Multiplies two quaternions represented as geometry_msgs.msg.Quaternion.
     Returns the resulting quaternion as a geometry_msgs.msg.Quaternion.
@@ -64,6 +64,10 @@ def mult_quat_msgs(q1: Quaternion, q2: Quaternion) -> Quaternion:
     r1 = Rotation.from_quat([q1.x, q1.y, q1.z, q1.w])
     r2 = Rotation.from_quat([q2.x, q2.y, q2.z, q2.w])
     r_result = r1 * r2
+
+    if flip_yaw:
+        r3 = Rotation.from_quat([0,0,1,0])
+        r_result = r3 * r_result
     q_result = r_result.as_quat()
 
     return Quaternion(x=q_result[0], y=q_result[1], z=q_result[2], w=q_result[3])
