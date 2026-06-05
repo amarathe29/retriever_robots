@@ -253,13 +253,17 @@ class RetrieveNode(Node):
                     self.state = State.RECOVERY
 
             elif self.state == State.POSITIONING:
+
+                self.logger.info(
+                    f"[{self.state.name}] About to postion to: {self.positioning_pose.position.x:.2f}, {self.positioning_pose.position.y:.2f}"
+                )
+                continue
                 reached = self.go_to_pose(self.positioning_pose)
                 if reached:
                     
                     self.logger.info(
                         f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
                     )
-                    continue
                     self.state = State.GRABBING
 
             elif self.state == State.GRABBING:
@@ -335,12 +339,12 @@ class RetrieveNode(Node):
                     cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
                         min(0.8 * abs(self.recovery_pose.position.y), 0.15), 0.05
                     )
-                elif self.recovery_pose.position.x > 0.42:
+                elif self.recovery_pose.position.x > 0.6:
                     self.logger.info(
                         f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
                         throttle_duration_sec=1.0,
                     )
-                    cmd.linear.x = max(min(self.recovery_pose.position.x, 0.2), 0.05)
+                    cmd.linear.x = max(min(self.recovery_pose.position.x, 0.1), 0.05)
                 elif self.grab_pose is not None:
                     if self.return_state == State.POSITIONING:
                         self.positioning_pose = deepcopy(self.grab_pose)
