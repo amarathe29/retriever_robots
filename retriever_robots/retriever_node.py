@@ -206,7 +206,7 @@ class RetrieveNode(Node):
         block_loc = deepcopy(self.observed_block_pose)
         transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time())
         res = do_transform_pose_stamped(block_loc, transform)
-        self.logger.warn(f"AHHHH: The block pose in in frame {block_loc.header.frame_id}; The grab pose is in frame {res.header.frame_id}")
+        res.pose.orientation = self.curr_pose.pose.orientation
         return res
 
     def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
