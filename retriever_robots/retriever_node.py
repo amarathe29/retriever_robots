@@ -183,8 +183,8 @@ class RetrieveNode(Node):
 
         if turn_magnitude < np.pi/2:
             # position ourselves along the pos y-axis, facing the start
-            pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
-            pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.x += BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET*np.sin(block_angle)
             # little hacky, don't judge me, I'm lazy
             pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
 
