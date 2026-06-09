@@ -548,7 +548,6 @@ class RetrieveNode(Node):
                 continue
             m = Marker()
             m.header = data[0].header
-            m.header.stamp = rclpy.time.Time()
             m.ns = label
             m.type = Marker.ARROW
             m.action = Marker.ADD
