@@ -6,6 +6,8 @@ from cc_interfaces.msg import Block
 from geometry_msgs.msg import PoseStamped, PolygonStamped, Point32
 from rclpy.action import ActionClient
 
+from utils import quaternion_from_euler
+
 import numpy as np
 
 class RetrieverActionTestNode(Node):
@@ -13,13 +15,14 @@ class RetrieverActionTestNode(Node):
         super().__init__("retriever_action_test_node")
         self.retrieve_action_client = ActionClient(self, RetrievalTask, "asher/retrieve_block")
 
-    def send_retrieval_goal(self, position, stockpile, quat=None):
+    def send_retrieval_goal(self, position, stockpile, type=0, quat=None):
         x,y,_ = position
         if quat is None:
             quat = [0.0, 0.0, 0.0, 1.0]
 
         goal_msg = RetrievalTask.Goal()
         goal_msg.block = Block()
+        goal_msg.block.type = int(type)
         goal_msg.block.pose.pose.position.x = x
         goal_msg.block.pose.pose.position.y = y
         goal_msg.block.pose.pose.position.z = 0.0
@@ -67,6 +70,7 @@ def main():
     point = [1.0, 1.0, 0.0]
     stockpile = 2*np.ones((4,2)) 
     node = RetrieverActionTestNode()
-    node.send_retrieval_goal(point, stockpile)
+    quat = quaternion_from_euler(yaw=45)
+    node.send_retrieval_goal(point, stockpile, 1, quat)
     rclpy.spin(node)
     rclpy.shutdown()
