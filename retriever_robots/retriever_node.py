@@ -420,7 +420,7 @@ class RetrieveNode(Node):
     # TODO: Implement the robot moving backwards better than this
     def pose_controller_reverse(self, target_pose: Pose) -> Twist:
         cmd = Twist()
-        cmd.linear = -0.1
+        cmd.linear.x = -0.1
         return cmd
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
