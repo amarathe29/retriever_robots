@@ -231,7 +231,7 @@ class RetrieveNode(Node):
                 self.stockpile_safe.pose.position.x = stock_pt_safe[0]
                 self.stockpile_safe.pose.position.y = stock_pt_safe[1]
 
-                self.nav_pose = self.calculate_nav_pose(goal_handle.request)
+                self.nav_pose = self.calculate_nav_pose(goal_handle.request, stock_pt_safe)
                 self.observed_block_pose = None
                 self.block_type = goal_handle.request.block.type
 
