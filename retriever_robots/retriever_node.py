@@ -429,7 +429,7 @@ class RetrieveNode(Node):
         
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
-        distance = -np.sqrt(dx**2 + dy**2)
+        distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
         q_curr = self.curr_pose.pose.orientation
         _, _, current_yaw = euler_from_quaternion(
@@ -455,7 +455,7 @@ class RetrieveNode(Node):
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
             if distance > 0.07:
-                sgn = np.sign(distance)
+                sgn = -np.sign(distance)
                 cmd.linear.x = sgn * max(min(linear_gain * abs(distance), 0.2), 0.05)
             else:
                 if abs(desired_yaw_diff) > 0.04:
