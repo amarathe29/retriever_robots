@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 from cc_interfaces.action import RetrievalTask
 from cc_interfaces.msg import Block
-from geometry_msgs.msg import PoseStamped, PolygonStamped, Point32
+from geometry_msgs.msg import PoseStamped, PolygonStamped, Point32, Quaternion
 from rclpy.action import ActionClient
 
 from retriever_robots.utils import quaternion_from_euler
@@ -18,7 +18,7 @@ class RetrieverActionTestNode(Node):
     def send_retrieval_goal(self, position, stockpile, type=0, quat=None):
         x,y,_ = position
         if quat is None:
-            quat = [0.0, 0.0, 0.0, 1.0]
+            quat = Quaternion()
 
         goal_msg = RetrievalTask.Goal()
         goal_msg.block = Block()
@@ -26,10 +26,7 @@ class RetrieverActionTestNode(Node):
         goal_msg.block.pose.pose.position.x = x
         goal_msg.block.pose.pose.position.y = y
         goal_msg.block.pose.pose.position.z = 0.0
-        goal_msg.block.pose.pose.orientation.x = quat[0]
-        goal_msg.block.pose.pose.orientation.y = quat[1]
-        goal_msg.block.pose.pose.orientation.z = quat[2]
-        goal_msg.block.pose.pose.orientation.w = quat[3]
+        goal_msg.block.pose.pose.orientation = quat
 
         stockpile_msg = PolygonStamped()
         stockpile_msg.polygon.points = [Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
