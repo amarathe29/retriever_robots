@@ -515,7 +515,7 @@ class RetrieveNode(Node):
     def go_to_pose(self, target_pose: PoseStamped, controller=None) -> bool:
 
         # is this maybe the wrong place for this? We'll see
-        transform = self.tf_buffer.lookup_transform(target_pose.header.frame_id, self._namespaced_frame("odom"), rclpy.time.Time())
+        transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), target_pose.header.frame_id, rclpy.time.Time())
         target_odom_pose = do_transform_pose_stamped(target_pose, transform)
         target_pose = target_odom_pose.pose 
 
