@@ -163,7 +163,6 @@ class RetrieveNode(Node):
         block_pose = message.block.pose.pose
         
         block_pt = (block_pose.position.x, block_pose.position.y)
-        # TODO: replace the stock_pt with a keepout zone safe point
 
         travel_angle = np.math.atan2(block_pt[1] - stock_pt_safe[1], block_pt[0]-stock_pt_safe[0])
 
@@ -184,14 +183,14 @@ class RetrieveNode(Node):
 
         if turn_magnitude > np.pi/2:
             # position ourselves along the pos y-axis, facing the start
-            pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
-            pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.x -= BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET*np.cos(block_angle)
             # little hacky, don't judge me, I'm lazy
             pose.pose.orientation = block_pose.orientation
 
         else:
-            pose.pose.position.x -= BLOCK_OFFSET*np.sin(block_angle)
-            pose.pose.position.y -= BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
             pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
 
 
