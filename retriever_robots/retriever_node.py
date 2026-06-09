@@ -164,7 +164,7 @@ class RetrieveNode(Node):
         block_pt = (block_pose.position.x, block_pose.position.y)
         # TODO: replace the stock_pt with a keepout zone safe point
 
-        travel_angle = np.math.arctan2(block_pt[1] - stock_pt_safe[1], block_pt[0]-stock_pt_safe[0])
+        travel_angle = np.math.atan2(block_pt[1] - stock_pt_safe[1], block_pt[0]-stock_pt_safe[0])
 
         _,_, block_angle = euler_from_quaternion(
             block_pose.orientation.x,
