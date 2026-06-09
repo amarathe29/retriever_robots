@@ -112,7 +112,9 @@ class RetrieveNode(Node):
         self.logger.debug(f"Received Odometry: {msg}")
         self.odom = msg
         if self._start_pose is None:
-            self._start_pose = self.odom.pose
+            self._start_pose = PoseStamped()
+            self._start_pose.header.frame_id = self._namespaced_frame("odom")
+            self._start_pose.pose = self.odom.pose.pose
             self.start_pose_set = True
 
     def update_odom_state(self, valid_msg: Bool):
