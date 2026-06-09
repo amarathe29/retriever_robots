@@ -64,7 +64,7 @@ class RetrieverActionTestNode(Node):
 
 def main():
     rclpy.init()
-    point = [1.0, 0.0, 0.0]
+    point = [1.0, 1.0, 0.0]
     stockpile = 2*np.ones((4,2)) 
     node = RetrieverActionTestNode()
     node.send_retrieval_goal(point, stockpile)

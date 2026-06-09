@@ -89,12 +89,15 @@ class RetrieveNode(Node):
         self.odom = None
         self.start_pose_set = False
         self._start_pose = None
+
+        self.block_type = None
         self.nav_pose = None
         self.observed_block_pose = None
         self.stockpile = None
         self.stockpile_safe = None
-        self.missing_tag_count = 0
         self.recovery_pose = None
+
+        self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
 
@@ -133,6 +136,11 @@ class RetrieveNode(Node):
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
 
+        if self.block_type is not None and msg.type != self.block_type:
+            # TODO: If we want a mislabelled block, we'd have to remove this
+            self.logger.warning("Incorrect Block Size", throttle_duration_sec=5.0)
+            return
+
         self.tag_visible = True
         self.missing_tag_count = 0
         self.observed_block_pose = msg.pose
@@ -166,10 +174,8 @@ class RetrieveNode(Node):
             use_extrinsics=True,
         )
 
-        approach_angle = angle_wrap(block_angle + np.pi/2)
-
         # this is how much angle the robot needs to rotate through in order to bring the block to the stockpile (directly)
-        turn_magnitude = np.abs(travel_angle - approach_angle)
+        turn_magnitude = np.abs(travel_angle - block_angle)
 
         pose = PoseStamped()
         pose.header = message.block.pose.header
@@ -177,14 +183,14 @@ class RetrieveNode(Node):
 
         if turn_magnitude > np.pi/2:
             # position ourselves along the pos y-axis, facing the start
-            pose.pose.position.x += BLOCK_OFFSET*np.cos(block_angle)
-            pose.pose.position.y += BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
             # little hacky, don't judge me, I'm lazy
             pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
 
         else:
-            pose.pose.position.x -= BLOCK_OFFSET*np.cos(block_angle)
-            pose.pose.position.y -= BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.x -= BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET*np.cos(block_angle)
             pose.pose.orientation = block_pose.orientation
 
 
@@ -227,6 +233,8 @@ class RetrieveNode(Node):
 
                 self.nav_pose = self.calculate_nav_pose(goal_handle.request)
                 self.observed_block_pose = None
+                self.block_type = goal_handle.request.block.type
+
                 self.logger.info(
                     f"Received retrieve action goal: {self.nav_pose}, entering NAVIGATING state"
                 )
@@ -525,7 +533,7 @@ class RetrieveNode(Node):
         elif hasattr(self, "odom") and self.odom is not None:
             self.logger.debug("Using odometry topic")
             pose = PoseStamped()
-            pose.header.frame_id = f"{self.get_namespace()}/odom"
+            pose.header.frame_id = f"{self.get_namespace().strip("/")}/odom"
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.pose = self.odom.pose.pose
             return pose
@@ -552,7 +560,7 @@ class RetrieveNode(Node):
             m.type = Marker.ARROW
             m.action = Marker.ADD
             m.scale.x = 0.1
-            m.scale.y = 0.1
+            m.scale.y = 0.01
             m.scale.z = 0.1
             m.color.r = data[1][0]
             m.color.g = data[1][1]
