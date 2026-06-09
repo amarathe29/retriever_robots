@@ -57,7 +57,7 @@ class DetectBlock(Node):
         self.camera_frame = self._namespaced_frame("camera_link")
         self.camera_offset = np.array([[0.2], [0.0], [0.25]])
 
-        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 180, pitch = 135, yaw= 0, units="degrees") 
+        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 180, pitch = 225, yaw= 0, units="degrees") 
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()

@@ -91,6 +91,7 @@ class RetrieveNode(Node):
         self._start_pose = None
         self.nav_pose = None
         self.observed_block_pose = None
+        self.stockpile = None
         self.stockpile_safe = None
         self.missing_tag_count = 0
         self.recovery_pose = None
