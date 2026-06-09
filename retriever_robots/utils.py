@@ -73,24 +73,17 @@ def mult_quat_msgs(q1: Quaternion, q2: Quaternion, flip_yaw=False) -> Quaternion
     return Quaternion(x=q_result[0], y=q_result[1], z=q_result[2], w=q_result[3])
 
 
-def quaternion_from_euler(roll: float, pitch: float, yaw: float) -> list:
+def quaternion_from_euler(roll: float = 0, pitch: float = 0, yaw: float = 0, units: str = "radians") -> list:
     """
-    Converts Euler angles (Roll, Pitch, Yaw) in radians into a quaternion (x, y, z, w).
+    Converts Euler angles (Roll, Pitch, Yaw) in radians into a Ros2 Quaternion
     """
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
 
-    q = [0.0, 0.0, 0.0, 0.0]
-    q[0] = cy * cp * cr + sy * sp * sr  # w
-    q[1] = cy * cp * sr - sy * sp * cr  # x
-    q[2] = cy * sp * cr + sy * cp * sr  # y
-    q[3] = sy * cp * cr - cy * sp * sr  # z
-
-    return q
+    if units.lower() == "degrees":
+        roll = np.radians(roll)
+        pitch = np.radians(pitch)
+        yaw = np.radians(yaw)
+    x,y,z,w = Rotation.from_euler("XYZ", [roll, pitch, yaw]).as_quat()
+    return Quaternion(x=x, y=y, z=z, w=w)
 
 
 def create_rotation_matrix(
@@ -104,7 +97,7 @@ def create_rotation_matrix(
         pitch = np.radians(pitch)
         yaw = np.radians(yaw)
 
-    return Rotation.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
+    return Rotation.from_euler("XYZ", [roll, pitch, yaw]).as_matrix()
 
 
 def angle_wrap(angle: float) -> float:

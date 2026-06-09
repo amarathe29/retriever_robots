@@ -55,10 +55,9 @@ class DetectBlock(Node):
 
         self.base_frame = self._namespaced_frame("base_link")
         self.camera_frame = self._namespaced_frame("camera_link")
-        self.camera_offset = np.array([[0.15], [0.0], [0.1]])
+        self.camera_offset = np.array([[0.2], [0.0], [0.25]])
 
-        self.R_image_frame_to_robot = create_rotation_matrix(pitch = -90, units="degrees") @ create_rotation_matrix(roll = 90, units="degrees")
-        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 30, units="degrees") @ self.R_image_frame_to_robot
+        self.R_cam_angle_to_robot = create_rotation_matrix(roll = 180, pitch = 135, yaw= 0, units="degrees") 
 
         self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
         self._broadcast_static_camera_transform()
@@ -164,16 +163,16 @@ class DetectBlock(Node):
                     camera_pose.pose.orientation.z = z
                     camera_pose.pose.orientation.w = w
 
-                    robot_pose = do_transform_pose_stamped(camera_pose, self.static_transform)
+                    mkr_robot_pose = do_transform_pose_stamped(camera_pose, self.static_transform)
 
-                    self.debug_pub.publish(robot_pose)
+                    self.debug_pub.publish(mkr_robot_pose)
 
                     pose_status.tag_in_frame = True
-                    pose_status.pose = robot_pose.pose
+                    pose_status.pose = mkr_robot_pose
                     
                     
                     self.logger.info(
-                        f"Tag Detected: Marker center is {robot_pose.pose.position.x} m away,  {robot_pose.pose.position.y} m to the left, and {robot_pose.pose.position.z} m down)",
+                        f"Tag Detected: Marker center is {mkr_robot_pose.pose.position.x} m away,  {mkr_robot_pose.pose.position.y} m to the left, and {mkr_robot_pose.pose.position.z} m down)",
                         throttle_duration_sec=1.0,
                     )
 

@@ -3,26 +3,30 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import Twist, Pose, PoseStamped
+from geometry_msgs.msg import Twist, Pose, PoseStamped, Quaternion
+from visualization_msgs.msg import MarkerArray, Marker
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs
+from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs, quaternion_from_euler
 
 import numpy as np
 from enum import Enum, auto
 from copy import deepcopy
 
 
+BLOCK_OFFSET = 0.2 #m
+STOCK_CLEARANCE = 1 # m clearance
 class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
-    POSITIONING = auto()
     GRABBING = auto()
-    STOCKPILING = auto()
+    STOCKPILE_PREP = auto()
+    STOCKPILE_DEPOSIT = auto()
+    STOCKPILE_EXIT = auto()
     RETURNING = auto()
     RECOVERY = auto()
 
@@ -58,9 +62,10 @@ class RetrieveNode(Node):
             Twist, f"{self.get_namespace()}/cmd_vel", 10
         )
 
-        # for debug
-        self.grab_pub = self.create_publisher(PoseStamped, f"{self.get_namespace()}/grab_pose", 10)
 
+        self.vis_pub = self.create_publisher(
+            MarkerArray, f"{self.get_namespace()}/markers", 10
+        )
 
         # Set up action server
         self.retrieve_action = ActionServer(
@@ -69,6 +74,7 @@ class RetrieveNode(Node):
             f"{self.get_namespace()}/retrieve_block",
             self.retrieve_callback,
         )
+
 
 
         # Save the logger in ros1 style syntax, because wtf is with the self.get_logger() BS
@@ -83,11 +89,12 @@ class RetrieveNode(Node):
         self.odom = None
         self.start_pose_set = False
         self._start_pose = None
-        self.request_pose = None
-        self.grab_pose = None
-        self.visible_count = 0
+        self.nav_pose = None
+        self.observed_block_pose = None
+        self.stockpile_safe = None
+        self.missing_tag_count = 0
         self.recovery_pose = None
-        self.enter_recovery = False
+        self.tag_visible = False
         self.valid_tf_tree = False
 
 
@@ -104,101 +111,32 @@ class RetrieveNode(Node):
     def visible_block_callback(self, msg: Pose) -> None:
 
         if msg.block_in_frame and not msg.tag_in_frame:
-            # self.grab_pose = None
-            # self.block_pose = None
             if self.state in [State.RECOVERY]:
                 self.logger.info(
                     f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})",
                     throttle_duration_sec=1.0,
                 )
-                self.recovery_pose = msg.pose
+                self.recovery_pose = msg.pose # currently unused
             return
 
         if not msg.tag_in_frame:
-            self.visible_count += 1
-            if self.visible_count > 10:
+            self.missing_tag_count += 1
+            if self.missing_tag_count > 10:
                 # acts as some hysteresis for losing the block at 30 fps
                 if self.state in [
-                    State.POSITIONING,
                     State.NAVIGATING,
                     State.GRABBING,
-                    State.STOCKPILING,
+                    State.STOCKPILE_PREP,
                 ]:
-                    self.enter_recovery = True
+                    self.tag_visible = False
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
             return
 
-        self.enter_recovery = False
-        self.visible_count = 0
-        self.block_pose = msg.pose
+        self.tag_visible = True
+        self.missing_tag_count = 0
+        self.observed_block_pose = msg.pose
+        self.update_visualization()
 
-        # DO NOT ADD POSITIONING HERE!!!
-        if self.state in [
-            State.IDLE, #DEBUG
-            State.NAVIGATING,
-            State.RECOVERY,
-        ]:
-
-            if self.curr_pose is None:
-                self.logger.warning(
-                    "Current pose is unknown, cannot set grab pose", throttle_duration_sec=1.0
-                )
-                return
-
-            # TODO: cool math here to go from position of block in robot frame to robots position for optimal grasp
-            # should be colinear the orientation of the block.
-            _, _, yaw = euler_from_quaternion(
-                msg.pose.orientation.x,
-                msg.pose.orientation.y,
-                msg.pose.orientation.z,
-                msg.pose.orientation.w,
-                use_extrinsics=True,
-            )
-
-
-            positioning_distance = 0.2
-            pose = deepcopy(self.curr_pose)
-
-            # find both sides of the block, then drive to whichever is closest
-
-            p1 = np.array([self.block_pose.position.x - positioning_distance * np.cos(yaw), self.block_pose.position.y - positioning_distance * np.sin(yaw)])
-            p2 = np.array([self.block_pose.position.x + positioning_distance * np.cos(yaw), self.block_pose.position.y + positioning_distance * np.sin(yaw)])
-
-            # calculate whichever one is closer to curr_pose
-
-            current = np.array([pose.position.x, pose.position.y])
-            dist1 = np.linalg.norm(current-p1)
-            dist2 = np.linalg.norm(current-p2)
-
-            self.logger.info(f"Distances: {dist1:.2f}, {dist2:.2f}")
-
-            if dist1 < dist2:
-                pose.position.x += p1[0]
-                pose.position.y += p1[1]
-                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation)
-            else:
-                pose.position.x += p2[0]
-                pose.position.y += p2[1]
-                pose.orientation = mult_quat_msgs(msg.pose.orientation, pose.orientation, flip_yaw=True)
-
-            self.grab_pose = pose
-            robot_grab_pose = PoseStamped()
-            robot_grab_pose.header.stamp = self.get_clock().now().to_msg()
-            robot_grab_pose.header.frame_id = f"{self.get_namespace()}/odom"
-            robot_grab_pose.pose = self.grab_pose
-
-            self.grab_pub.publish(robot_grab_pose)
-
-            self.logger.info(
-                f"found block at \n{self.print_pose_euler(self.block_pose)},\n setting grab pose to \n{self.print_pose_euler(self.grab_pose)}\n Current Pose is: \n{self.print_pose_euler(self.curr_pose)}\n",
-                throttle_duration_sec=5.0,
-            )
-
-        # TODO: We need to use the location of the block to update our state machine:
-
-        # if we're grabbing, we can just check the position of the block within an envelope
-
-        # if we're stockpiling, we want to catch if we lose sight of the block...we may need a custom message here with a bool...
 
     def print_pose_euler(self, pose: Pose) -> str:
         roll, pitch, yaw = euler_from_quaternion(
@@ -208,6 +146,49 @@ class RetrieveNode(Node):
             pose.orientation.w,
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
+
+
+    def calculate_nav_pose(self, message, stock_pt_safe):
+        # given a message that contains both the block pose and the stockpile pose
+        block_pose = message.block.pose.pose
+        
+        block_pt = (block_pose.position.x, block_pose.position.y)
+        # TODO: replace the stock_pt with a keepout zone safe point
+
+        travel_angle = np.math.arctan2(block_pt[1] - stock_pt_safe[1], block_pt[0]-stock_pt_safe[0])
+
+        _,_, block_angle = euler_from_quaternion(
+            block_pose.orientation.x,
+            block_pose.orientation.y,
+            block_pose.orientation.z,
+            block_pose.orientation.w,
+            use_extrinsics=True,
+        )
+
+        approach_angle = angle_wrap(block_angle + np.pi/2)
+
+        # this is how much angle the robot needs to rotate through in order to bring the block to the stockpile (directly)
+        turn_magnitude = np.abs(travel_angle - approach_angle)
+
+        pose = PoseStamped()
+        pose.header = message.block.pose.header
+        pose.pose.position = block_pose.position
+
+        if turn_magnitude > np.pi/2:
+            # position ourselves along the pos y-axis, facing the start
+            pose.pose.position.x += BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET*np.sin(block_angle)
+            # little hacky, don't judge me, I'm lazy
+            pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
+
+        else:
+            pose.pose.position.x -= BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.orientation = block_pose.orientation
+
+
+        return pose
+
 
     def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
@@ -230,56 +211,47 @@ class RetrieveNode(Node):
             )
 
             if self.state == State.IDLE:
-                # TODO: handle tf tree
-                self.request_pose = goal_handle.request.block.pose.pose
-                self.grab_pose = None
-                self.marker_location = None
+                stockpile_points = goal_handle.request.stockpile.polygon.points
+                stock_pt = np.mean([(pt.x, pt.y) for pt in stockpile_points], axis=0)
+                stock_pt_safe = (stock_pt[0] + STOCK_CLEARANCE, stock_pt[1])
+                self.stockpile = PoseStamped()
+                self.stockpile.header = goal_handle.request.stockpile.header
+                self.stockpile.pose.position.x = stock_pt[0]
+                self.stockpile.pose.position.y = stock_pt[1]
+                self.stockpile.pose.orientation = quaternion_from_euler(yaw = 180, units="degrees")
+
+                self.stockpile_safe = deepcopy(self.stockpile)
+                self.stockpile_safe.position.x = stock_pt_safe[0]
+                self.stockpile_safe.position.y = stock_pt_safe[1]
+
+                self.nav_pose = self.calculate_nav_pose(goal_handle.request)
+                self.observed_block_pose = None
                 self.logger.info(
-                    f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
+                    f"Received retrieve action goal: {self.nav_pose}, entering NAVIGATING state"
                 )
                 self.state = State.NAVIGATING
 
             elif self.state == State.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose)
-                if self.grab_pose is not None:
+                reached = self.go_to_pose(self.nav_pose)
+                if self.observed_block_pose is not None:
                     self.logger.info(
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
-                    self.brake()
-                    rate = self.create_rate(1.0)
-                    rate.sleep()
-                    self.positioning_pose = deepcopy(self.grab_pose)
-                    self.state = State.POSITIONING
-                elif reached and self.enter_recovery:
+                    self.state = State.GRABBING
+                elif reached and not self.tag_visible:
                     self.logger.info(
                         f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = State.POSITIONING
+                    self.return_state = State.GRABBING
                     self.state = State.RECOVERY
 
-            elif self.state == State.POSITIONING:
-
-                self.logger.info(
-                    f"[{self.state.name}] About to postion to: {self.positioning_pose.position.x:.2f}, {self.positioning_pose.position.y:.2f}"
-                )
-                continue
-                reached = self.go_to_pose(self.positioning_pose)
-                if reached:
-                    
-                    self.logger.info(
-                        f"[{self.state.name}]Reached grab pose, entering GRABBING state to grab block"
-                    )
-                    self.state = State.GRABBING
 
             elif self.state == State.GRABBING:
-                # super naive, I'd rather put an bound on block position here
+                # super naive, we should check for block in position here
                 # I think this is where we take down our barriers on the specific block
-                move_pose = deepcopy(self.curr_pose)
-                move_pose.position.x += self.block_pose.position.x
-                move_pose.position.y += self.block_pose.position.y
-                reached = self.go_to_pose(move_pose)
+                reached = self.go_to_pose(self.observed_block_pose)
                 self.logger.info(
-                    f"Going to block located at {move_pose}",
+                    f"Going to block located at {self.observed_block_pose.pose}",
                     throttle_duration_sec=1.0,
                 )
                 if reached:
@@ -288,26 +260,55 @@ class RetrieveNode(Node):
                     )
                     self.state = State.STOCKPILING
 
-            elif self.state == State.STOCKPILING:
-                # TODO: This should be changed to be the output of some function from the camera also add functionality
-                block_captured = True
-                reached = True
-                if block_captured and reached:
+            elif self.state == State.STOCKPILE_PREP:
+                # move to the safe stockpile location
+                reached = self.go_to_pose(self.stockpile_safe)
+                if self.tag_visible and reached:
                     self.logger.info(
-                        f"[{self.state.name}]Stockpiled block, entering RETURNING state to return to start"
+                        f"[{self.state.name}]Reached Safe Stockpile Point, attempting DEPOSIT"
                     )
-                    self.state = State.RETURNING
-                elif not block_captured:
+                    self.state = State.STOCKPILE_DEPOSIT
+                elif not self.tag_visible:
                     self.logger.info(
-                        f"[{self.state.name}]Failed to capture block, entering RECOVERY state to attempt recovery"
+                        f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
                     )
-                    self.return_state = State.STOCKPILING
+                    self.return_state = State.GRABBING
                     self.state = State.RECOVERY
+
+            elif self.state == State.STOCKPILE_DEPOSIT:
+                # move to the specific stockpile location
+                reached = self.go_to_pose(self.stockpile)
+                if self.tag_visible and reached:
+                    self.logger.info(
+                        f"[{self.state.name}]Stockpiled block, attempting to EXIT the STOCKPILE"
+                    )
+                    self.exit_pose = deepcopy(self.curr_pose) # actually subtract some amount in x in robot frame from this
+                    self.state = State.STOCKPILE_EXIT
+                elif not self.tag_visible:
+                    self.logger.info(
+                        f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
+                    )
+                    self.return_state = State.GRABBING
+                    self.state = State.RECOVERY
+
+
+            elif self.state == State.STOCKPILE_EXIT:
+                # calculate a position 0.4 m behind me
+                reached = None
+                if reached is None:
+                    back_up = self.go_to_pose(self.exit_pose, self.pose_controller_clf_reverse)
+                if back_up:
+                    reached = self.go_to_pose(self.stockpile_safe)
+                    if reached:
+                        self.logger.info(
+                            f"[{self.state.name}]Exited the stockpile successfully, returning to base"
+                        )
+                        self.state = State.RETURNING
 
             # This state is just if we want the robot to return to the starting position
             elif self.state == State.RETURNING:
                 if self._start_pose is not None:
-                    goal_reached = self.go_to_pose(self._start_pose, controller=self.pose_controller_clf_constrained)
+                    goal_reached = self.go_to_pose(self._start_pose, controller=self.pose_controller_clf)
                     if goal_reached:
                         self.logger.info(
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
@@ -316,18 +317,14 @@ class RetrieveNode(Node):
                         result = RetrievalTask.Result()
                         result.success = True
                         result.delivered = Block()
-                        result.delivered.pose.pose = self.block_pose if self.block_pose is not None else Pose()
-                        result.delivered.pose.header.stamp = self.get_clock().now().to_msg()
-                        result.delivered.pose.header.frame_id = f"{self.get_namespace()}/odom"
+                        result.delivered.pose = self.observed_block_pose
                         self.state = State.IDLE
                         return result
 
             elif self.state == State.RECOVERY:
                 cmd = Twist()
 
-                recovered = False
-
-                if self.recovery_pose is None or self.recovery_pose == Pose():
+                if not self.tag_visible:
                     self.logger.warning(
                         "No recovery pose available, spinning robot",
                         throttle_duration_sec=5.0,
@@ -335,48 +332,13 @@ class RetrieveNode(Node):
                     cmd.angular.z = 0.2
                     self.vel_pub.publish(cmd)
                     continue
-
-                elif abs(self.recovery_pose.position.y) > 0.07:
-                    self.logger.info(
-                        f"Attempting recovery with recovery pose: ({self.recovery_pose.position.x}, {self.recovery_pose.position.y}",
-                        throttle_duration_sec=1.0,
-                    )
-                    cmd.angular.z = np.sign(self.recovery_pose.position.y) * max(
-                        min(0.8 * abs(self.recovery_pose.position.y), 0.15), 0.05
-                    )
-                elif self.recovery_pose.position.x > 0.45:
-                    self.logger.info(
-                        f"Recovery pose is far away {self.recovery_pose.position.x}, moving towards it",
-                        throttle_duration_sec=1.0,
-                    )
-                    cmd.linear.x = max(min(self.recovery_pose.position.x, 0.1), 0.05)
-                elif self.grab_pose is not None:
-                    if self.return_state == State.POSITIONING:
-                        self.positioning_pose = deepcopy(self.grab_pose)
-                    recovered = True
-                else:
-                    self.recovery_pose = None
-
-                if recovered:
-                    self.enter_recovery = False
-                    self.logger.info(
-                        f"[{self.state.name}] Found block, entering {self.return_state.name} state"
-                    )
-
-                    self.state = self.return_state
-                    self.return_state = None
-                    self.recovery_pose = None
-
-                self.vel_pub.publish(cmd)
+                self.state = self.return_state
 
 
         result = RetrievalTask.Result()
         result.success = False
         result.delivered = Block()
-        result.delivered.pose.pose = self.block_pose if self.block_pose is not None else Pose()
-        result.delivered.pose.header.stamp = self.get_clock().now().to_msg()
-        result.delivered.pose.header.frame_id = f"{self.get_namespace()}/odom"
-        # add gracefull returning to idle and the idle position here
+        result.delivered.pose = self.observed_block_pose if self.observed_block_pose is not None else PoseStamped()
         return result
 
     def pose_controller(self, target_pose: Pose) -> Twist:
@@ -539,6 +501,9 @@ class RetrieveNode(Node):
 
     def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
 
+        # TODO: drop this and use the tf tree to convert poses before driving to them
+        target_pose = target_pose.pose 
+
         if controller is None:
             controller = self.pose_controller_clf
 
@@ -550,7 +515,7 @@ class RetrieveNode(Node):
     def brake(self):
         self.vel_pub.publish(Twist())
 
-    # TODO use the world frame and published aruco tags to update the robots position
+    # TODO: use the world frame and published aruco tags to update the robots position
     @property
     def curr_pose(self):
         if hasattr(self, "pose") and self.pose is not None:
@@ -562,6 +527,37 @@ class RetrieveNode(Node):
         else:
             self.logger.warning("No pose information available")
             return None
+
+    def update_visualization(self):
+        msg = MarkerArray()
+        marker_data = {
+            "curr_pose" : (self.curr_pose, (1.0,1.0,0.0)),
+            "observed_block" : (self.observed_block_pose, (1.0, 0.0, 0.0)),
+            "nav_pose" : (self.nav_pose, (0.0,1.0,1.0)),
+            "stockpile_pose" : (self.stockpile, (0.0,1.0,0.0)),
+            "stockpile_safe_pose" : (self.stockpile_safe, (0.0,0.0,1.0)),
+        }
+
+        for label, data in marker_data.items():
+            if data[0] is None:
+                continue
+            m = Marker()
+            m.header = data[0].header
+            m.ns = label
+            m.type = Marker.ARROW
+            m.action = Marker.ADD
+            m.scale.x = 0.1
+            m.scale.y = 0.1
+            m.scale.z = 0.1
+            m.color.r = data[1][0]
+            m.color.g = data[1][1]
+            m.color.b = data[1][2]
+            m.color.a = 1.0
+            m.pose = data[0].pose
+            msg.markers.append(m)
+
+
+        self.vis_pub.publish(msg)
 
 
 def main():
