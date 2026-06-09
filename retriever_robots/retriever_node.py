@@ -22,6 +22,7 @@ from copy import deepcopy
 
 
 BLOCK_OFFSET = 0.4 #m
+REVERSE_DISTANCE = 0.4 #m
 STOCK_CLEARANCE = 1 # m clearance
 class State(Enum):
     IDLE = auto()
@@ -30,6 +31,7 @@ class State(Enum):
     STOCKPILE_PREP = auto()
     STOCKPILE_DEPOSIT = auto()
     STOCKPILE_EXIT = auto()
+    STOCKPILE_DEPART = auto()
     RETURNING = auto()
     RECOVERY = auto()
 
@@ -200,6 +202,10 @@ class RetrieveNode(Node):
 
         return pose
 
+    def save_block_pose(self):
+        block_loc = deepcopy(self.observed_block_pose)
+        transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time())
+        return do_transform_pose_stamped(block_loc, transform)
 
     def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
@@ -248,9 +254,10 @@ class RetrieveNode(Node):
                 reached = self.go_to_pose(self.nav_pose)
                 if self.observed_block_pose is not None:
                     self.logger.info(
-                        f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
+                        f"[{self.state.name}]Found block, entering GRABBING state to acquire block"
                     )
-                    self.grab_pose = deepcopy(self.observed_block_pose)
+                    self.grab_pose = self.save_block_pose()
+
                     self.state = State.GRABBING
                 elif reached and not self.tag_visible:
                     self.logger.info(
@@ -269,7 +276,7 @@ class RetrieveNode(Node):
                 if reached:
                     self.grab_pose = None
                     self.logger.info(
-                        f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
+                        f"[{self.state.name}]Grabbed block, bringing block to Safe Stockpile Point"
                     )
                     self.state = State.STOCKPILE_PREP
 
@@ -295,7 +302,8 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Stockpiled block, attempting to EXIT the STOCKPILE"
                     )
-                    self.exit_pose = deepcopy(self.curr_pose) # actually subtract some amount in x in robot frame from this
+                    self.exit_pose = deepcopy(self.curr_pose)
+                    self.exit_pose.pose.position.x -= REVERSE_DISTANCE # back off directly
                     self.state = State.STOCKPILE_EXIT
                 elif not self.tag_visible:
                     self.logger.info(
@@ -304,15 +312,15 @@ class RetrieveNode(Node):
                     self.return_state = State.GRABBING
                     self.state = State.RECOVERY
 
-
             elif self.state == State.STOCKPILE_EXIT:
-                # calculate a position 0.4 m behind me
-                reached = None
-                if reached is None:
-                    back_up = self.go_to_pose(self.exit_pose, self.pose_controller_clf_reverse)
+                back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
                 if back_up:
                     reached = self.go_to_pose(self.stockpile_safe)
-                    if reached:
+                    self.state = State.STOCKPILE_DEPART
+                    
+            elif self.state == State.STOCKPILE_DEPART:
+                reached = self.go_to_pose(self.stockpile_safe)
+                if reached:
                         self.logger.info(
                             f"[{self.state.name}]Exited the stockpile successfully, returning to base"
                         )
@@ -361,10 +369,10 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        # self.logger.info(
-        #     f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
-        #     throttle_duration_sec=2.0,
-        # )
+        self.logger.info(
+            f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
+            throttle_duration_sec=2.0,
+        )
 
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
@@ -375,7 +383,6 @@ class RetrieveNode(Node):
             q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
         )
         angle_diff = angle_wrap(angle_to_target - current_yaw)
-        self.logger.error(f"Cur: [{self.curr_pose.pose.position.x:.2f} {self.curr_pose.pose.position.y}] | Tar: [{target_pose.position.x:.2f}, {target_pose.position.y:.2f}]")
         q_desired = target_pose.orientation
         _, _, desired_yaw = euler_from_quaternion(
             q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
@@ -386,10 +393,10 @@ class RetrieveNode(Node):
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
-        # self.logger.info(
-        #     f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
-        #     throttle_duration_sec=1.0,
-        # )
+        self.logger.info(
+            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
+            throttle_duration_sec=1.0,
+        )
         if abs(angle_diff) > 0.04 and distance > 0.15:
             sgn = np.sign(angle_diff)
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
@@ -408,9 +415,11 @@ class RetrieveNode(Node):
 
         return cmd
 
-    # TODO: Implement the robot moving backwards
+    # TODO: Implement the robot moving backwards better than this
     def pose_controller_reverse(self, target_pose: Pose) -> Twist:
-        pass
+        cmd = Twist()
+        cmd.linear = -0.1
+        return cmd
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
@@ -492,7 +501,6 @@ class RetrieveNode(Node):
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
-        angle_to_target = np.arctan2(dy, dx)
         q_curr = self.curr_pose.pose.orientation
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
@@ -516,10 +524,7 @@ class RetrieveNode(Node):
 
     def go_to_pose(self, target_pose: PoseStamped, controller=None) -> bool:
 
-        # is this maybe the wrong place for this? We'll see
-        transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), target_pose.header.frame_id, rclpy.time.Time())
-        target_odom_pose = do_transform_pose_stamped(target_pose, transform)
-        target_pose = target_odom_pose.pose 
+        assert target_pose.header.frame_id == self._namespaced_frame("odom")
 
         if controller is None:
             controller = self.pose_controller
