@@ -456,7 +456,7 @@ class RetrieveNode(Node):
         else:
             if distance > 0.07:
                 sgn = np.sign(distance)
-                cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
+                cmd.linear.x = sgn * max(min(linear_gain * abs(distance), 0.2), 0.05)
             else:
                 if abs(desired_yaw_diff) > 0.04:
                     sgn = np.sign(desired_yaw_diff)
