@@ -21,7 +21,7 @@ from enum import Enum, auto
 from copy import deepcopy
 
 
-BLOCK_OFFSET = 0.2 #m
+BLOCK_OFFSET = 0.4 #m
 STOCK_CLEARANCE = 1 # m clearance
 class State(Enum):
     IDLE = auto()
@@ -423,7 +423,7 @@ class RetrieveNode(Node):
         assert h > 0, f"h = {h} must be greater than 0"
 
         self.logger.info(
-            f"Using CLF controller to go to {target_pose}, from {self.curr_pose}",
+            f"Using CLF controller to go to {target_pose}, from {self.curr_pose.pose}",
             throttle_duration_sec=1.0,
         )
         q_curr = self.curr_pose.pose.orientation
@@ -520,7 +520,7 @@ class RetrieveNode(Node):
         target_pose = target_odom_pose.pose 
 
         if controller is None:
-            controller = self.pose_controller_clf
+            controller = self.pose_controller
 
         cmd = controller(target_pose)
         self.vel_pub.publish(cmd)
