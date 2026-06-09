@@ -56,6 +56,16 @@ def euler_from_quaternion(x: float, y: float, z: float, w: float, use_extrinsics
     return Rotation.from_quat([x, y, z, w]).as_euler("XYZ" if not use_extrinsics else "xyz")
 
 
+def reverse_yaw_quaternion(quat: Quaternion)-> Quaternion:
+    """
+    Multiplies a ROS2 quaternion by a 180 degree rotation about the z axis.
+    """
+    R = Rotation.from_quat([quat.x, quat.y, quat.z, quat.w])
+    R2 = Rotation.from_quat([0,0,1,0])
+    q_rot = (R2 * R).as_quat()
+    return Quaternion(x=q_rot[0], y=q_rot[1], z=q_rot[2], w=q_rot[3])
+
+
 def mult_quat_msgs(q1: Quaternion, q2: Quaternion, flip_yaw=False) -> Quaternion:
     """
     Multiplies two quaternions represented as geometry_msgs.msg.Quaternion.

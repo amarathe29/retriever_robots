@@ -11,7 +11,7 @@ from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs, quaternion_from_euler
+from retriever_robots.utils import angle_wrap, euler_from_quaternion, reverse_yaw_quaternion, quaternion_from_euler
 
 import tf2_ros
 from tf2_geometry_msgs import do_transform_pose_stamped
@@ -193,8 +193,7 @@ class RetrieveNode(Node):
             # position ourselves along the pos y-axis, facing the start
             pose.pose.position.x += BLOCK_OFFSET*np.cos(block_angle)
             pose.pose.position.y += BLOCK_OFFSET*np.sin(block_angle)
-            # little hacky, don't judge me, I'm lazy
-            pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
+            pose.pose.orientation = reverse_yaw_quaternion(block_pose.orientation)
 
         else:
             pose.pose.position.x -= BLOCK_OFFSET*np.cos(block_angle)
@@ -326,10 +325,10 @@ class RetrieveNode(Node):
             elif self.state == State.STOCKPILE_EXIT:
                 back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
                 if back_up:
-                    reached = self.go_to_pose(self.stockpile_safe)
                     self.state = State.STOCKPILE_DEPART
                     
             elif self.state == State.STOCKPILE_DEPART:
+                self.stockpile_safe.pose.orientation = reverse_yaw_quaternion(self.stockpile_safe.pose.orientation)
                 reached = self.go_to_pose(self.stockpile_safe)
                 if reached:
                         self.logger.info(
