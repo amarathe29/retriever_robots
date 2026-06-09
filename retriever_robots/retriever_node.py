@@ -187,12 +187,12 @@ class RetrieveNode(Node):
             pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
             pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
             # little hacky, don't judge me, I'm lazy
-            pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
+            pose.pose.orientation = block_pose.orientation
 
         else:
             pose.pose.position.x -= BLOCK_OFFSET*np.sin(block_angle)
             pose.pose.position.y -= BLOCK_OFFSET*np.cos(block_angle)
-            pose.pose.orientation = block_pose.orientation
+            pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
 
 
         return pose
@@ -552,17 +552,20 @@ class RetrieveNode(Node):
             "stockpile_safe_pose" : (self.stockpile_safe, (0.0,0.0,1.0)),
         }
 
-        for label, data in marker_data.items():
+        for i, nary in enumerate(marker_data.items()):
+            label, data = nary
             if data[0] is None:
                 continue
             m = Marker()
             m.header = data[0].header
-            m.ns = label
+            m.ns = self.get_namespace()
+            m.id = i
+            m.text = label
             m.type = Marker.ARROW
             m.action = Marker.ADD
-            m.scale.x = 0.1
-            m.scale.y = 0.01
-            m.scale.z = 0.01
+            m.scale.x = 0.5
+            m.scale.y = 0.05
+            m.scale.z = 0.05
             m.color.r = data[1][0]
             m.color.g = data[1][1]
             m.color.b = data[1][2]
