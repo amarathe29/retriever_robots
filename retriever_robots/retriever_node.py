@@ -13,6 +13,9 @@ from retriever_msgs.msg import PoseStatus  # type: ignore
 
 from retriever_robots.utils import angle_wrap, euler_from_quaternion, mult_quat_msgs, quaternion_from_euler
 
+import tf2_ros
+from tf2_geometry_msgs import do_transform_pose_stamped
+
 import numpy as np
 from enum import Enum, auto
 from copy import deepcopy
@@ -75,7 +78,8 @@ class RetrieveNode(Node):
             self.retrieve_callback,
         )
 
-
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Save the logger in ros1 style syntax, because wtf is with the self.get_logger() BS
         self.logger = self.get_logger()
@@ -267,7 +271,7 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
                     )
-                    self.state = State.STOCKPILING
+                    self.state = State.STOCKPILE_PREP
 
             elif self.state == State.STOCKPILE_PREP:
                 # move to the safe stockpile location
@@ -508,10 +512,12 @@ class RetrieveNode(Node):
 
         return True
 
-    def go_to_pose(self, target_pose: Pose, controller=None) -> bool:
+    def go_to_pose(self, target_pose: PoseStamped, controller=None) -> bool:
 
-        # TODO: drop this and use the tf tree to convert poses before driving to them
-        target_pose = target_pose.pose 
+        # is this maybe the wrong place for this? We'll see
+        transform = self.tf_buffer.lookup_transform(target_pose.header.frame_id, self._namespaced_frame("odom"), rclpy.time.Time())
+        target_odom_pose = do_transform_pose_stamped(target_pose, transform)
+        target_pose = target_odom_pose.pose 
 
         if controller is None:
             controller = self.pose_controller_clf
@@ -533,13 +539,17 @@ class RetrieveNode(Node):
         elif hasattr(self, "odom") and self.odom is not None:
             self.logger.debug("Using odometry topic")
             pose = PoseStamped()
-            pose.header.frame_id = f"{self.get_namespace().strip("/")}/odom"
+            pose.header.frame_id = self._namespaced_frame("odom")
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.pose = self.odom.pose.pose
             return pose
         else:
             self.logger.warning("No pose information available")
             return None
+
+    def _namespaced_frame(self, frame_name):
+        ns = self.get_namespace().strip("/")
+        return f"{ns}/{frame_name}" if ns else frame_name
 
     def update_visualization(self):
         msg = MarkerArray()
