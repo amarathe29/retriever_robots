@@ -153,11 +153,12 @@ def uni_to_si_vel(dxu, pose, projection_distance=0.05):
 
 def get_robot_barrier_func(
     safety_radius: float = 0.35,
-    barrier_gain: float = 60.0,
+    barrier_gain: float = 20.0,
     magnitude_limit: float = 0.2,
     boundary_points: np.array = None,
     build_area_points: np.array = None,
     block_safety_radius: float = 0.07,
+    projection_dist: float = 0.15,
 ) -> callable:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.
@@ -189,7 +190,7 @@ def get_robot_barrier_func(
         """
         barrier_power = 3
         dxu = np.array([[unsafe_cmd.linear.x], [unsafe_cmd.angular.z]])
-        projection_distance = 0.02
+        projection_distance = projection_dist
 
         # TODO: Convert Unicycle to SI, and then back
         dxi = uni_to_si_vel(dxu, pose, projection_distance)
