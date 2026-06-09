@@ -419,8 +419,48 @@ class RetrieveNode(Node):
 
     # TODO: Implement the robot moving backwards better than this
     def pose_controller_reverse(self, target_pose: Pose) -> Twist:
+        
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
+        distance = np.sqrt(dx**2 + dy**2)
+        angle_to_target = np.arctan2(dy, dx)
+        q_curr = self.curr_pose.pose.orientation
+
+        q_curr = self.curr_pose.pose.orientation
+        _, _, current_yaw = euler_from_quaternion(
+            q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
+        )
+        angle_diff = angle_wrap(angle_to_target - (current_yaw + np.pi))
+        q_desired = target_pose.orientation
+        _, _, desired_yaw = euler_from_quaternion(
+            q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
+        )
+        desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
+
         cmd = Twist()
-        cmd.linear.x = -0.1
+        linear_gain = -0.3  # Arbitrary gain cause why not
+        angular_gain = 0.7
+
+        self.logger.info(
+            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
+            throttle_duration_sec=1.0,
+        )
+        if abs(angle_diff) > 0.04 and distance > 0.15:
+            sgn = np.sign(angle_diff)
+            cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
+        else:
+            if distance > 0.07:
+                sgn = np.sign(distance)
+                cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
+            else:
+                if abs(desired_yaw_diff) > 0.04:
+                    sgn = np.sign(desired_yaw_diff)
+                    cmd.angular.z = sgn * max(
+                        min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
+                    )
+                else:
+                    return Twist()
+        
         return cmd
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
