@@ -71,7 +71,7 @@ def main():
     point = [1.0, 1.0, 0.0]
     stockpile = 2*np.ones((4,2)) 
     node = RetrieverActionTestNode()
-    quat = quaternion_from_euler(yaw=45)
+    quat = quaternion_from_euler(yaw=45, units="degrees")
     node.send_retrieval_goal(point, stockpile, 1, quat)
     rclpy.spin(node)
     rclpy.shutdown()
