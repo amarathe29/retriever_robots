@@ -11,7 +11,7 @@ from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import angle_wrap, euler_from_quaternion, reverse_yaw_quaternion, quaternion_from_euler
+from retriever_robots.utils import angle_wrap, euler_from_quaternion, reverse_yaw_quaternion, quaternion_from_euler, get_robot_barrier_func
 
 import tf2_ros
 from tf2_geometry_msgs import do_transform_pose_stamped
@@ -106,7 +106,7 @@ class RetrieveNode(Node):
         self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
-
+        self.barrier_func = get_robot_barrier_func(boundary_points=[-3.0,3.0,-5.0,5.0])
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
@@ -224,7 +224,7 @@ class RetrieveNode(Node):
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
         if self.state != State.IDLE:
             self.logger.error(f"Already running an action")
-            goal_handle.fail()
+            goal_handle.abort()
             result = RetrievalTask.Result()
             result.success = False
             return
@@ -539,7 +539,9 @@ class RetrieveNode(Node):
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
-        return cmd
+        robo_pose = np.array([[self.curr_pose.pose.position.x],[self.curr_pose.pose.position.y],[self.curr_pose.pose.position.z]])
+        safe_cmd = self.barrier_func(cmd, robo_pose, neighbor_positions=np.array([[0.9], [0.0]]), block_positions=None)
+        return safe_cmd
 
     def check_reached_target(self, target_pose: Pose) -> bool:
         if self.curr_pose is None:

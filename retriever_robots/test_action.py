@@ -60,18 +60,21 @@ class RetrieverActionTestNode(Node):
         result = future.result().result
 
         if result.success:
-            self.get_logger().info(f"Action returned success: {result.delivered}")
+            self.get_logger().info(f"Action returned success")
         else:
-            self.get_logger().info(f"Action Failed: {result.delivered}")
-
+            self.get_logger().info(f"Action Failed")
 
 
 def main():
     rclpy.init()
-    point = [1.0, 1.0, 0.0]
+    point = [1.8, 0.0, 0.0]
     stockpile = 2*np.ones((4,2)) 
     node = RetrieverActionTestNode()
     quat = quaternion_from_euler(yaw=45, units="degrees")
+    print(f"Going to point {point}")
     node.send_retrieval_goal(point, stockpile, 1, quat)
     rclpy.spin(node)
     rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()

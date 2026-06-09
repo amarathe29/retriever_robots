@@ -5,6 +5,7 @@ from scipy.spatial.transform import Rotation
 from geometry_msgs.msg import Quaternion, Twist, TransformStamped
 from cvxopt import matrix, sparse
 from cvxopt.solvers import qp, options
+from rclpy.logging import get_logger
 
 options["show_progress"] = False
 options["reltol"] = 1e-2
@@ -116,7 +117,7 @@ def angle_wrap(angle: float) -> float:
 
 def si_to_uni_vel(dxi, pose, projection_distance=0.03):
     d = projection_distance
-    h = pose[2]
+    h = float(pose[2].item()) if hasattr(pose[2], 'item') else float(pose[2])
     T_inv = np.array([
         [np.cos(h), np.sin(h)],
         [-np.sin(h) / d, np.cos(h) / d]
@@ -132,7 +133,7 @@ def uni_to_si_vel(dxu, pose, projection_distance=0.05):
     T = np.array([[1, 0], [0, d]])
 
     dxi = np.zeros((2, 1))
-    h = pose[2]
+    h = float(pose[2].item()) if hasattr(pose[2], 'item') else float(pose[2])
     # Rotation matrix from body frame to world frame.
     R = np.array([[np.cos(h), -np.sin(h)], [np.sin(h), np.cos(h)]])
     dxi = R @ T @ dxu
