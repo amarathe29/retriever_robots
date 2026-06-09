@@ -6,7 +6,7 @@ from cc_interfaces.msg import Block
 from geometry_msgs.msg import PoseStamped, PolygonStamped, Point32
 from rclpy.action import ActionClient
 
-from utils import quaternion_from_euler
+from retriever_robots.utils import quaternion_from_euler
 
 import numpy as np
 
