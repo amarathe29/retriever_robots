@@ -560,7 +560,7 @@ class RetrieveNode(Node):
             m.ns = label
             m.type = Marker.ARROW
             m.action = Marker.ADD
-            m.scale.x = 0.1
+            m.scale.x = 0.01
             m.scale.y = 0.01
             m.scale.z = 0.1
             m.color.r = data[1][0]
