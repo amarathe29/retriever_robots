@@ -193,16 +193,16 @@ class DetectBlock(Node):
                 )  # if no tags are detected, try to segment based on color as a fallback
                 if pose_status.block_in_frame:
                     # create a fake pose with a y position scaled based on the negative x value of the image. Make a rough x pose based on y in frame
-                    pose_status.pose.position.x = 0.5 + max(
+                    pose_status.pose.pose.position.x = 0.5 + max(
                         min(-0.001 * (y - cv_image.shape[0] / 2), 0.5), -0.5
                     )
-                    pose_status.pose.position.y = max(
+                    pose_status.pose.pose.position.y = max(
                         min(-0.001 * (x - cv_image.shape[1] / 2), 0.5), -0.5
                     )
-                    pose_status.pose.position.z = 0.0
-                    pose_status.pose.orientation.w = 1.0
+                    pose_status.pose.pose.position.z = 0.0
+                    pose_status.pose.pose.orientation.w = 1.0
                     self.logger.debug(
-                        f"Tag not detected, using color segmentation. Estimated pose: ({pose_status.pose.position.x}, {pose_status.pose.position.y}, {pose_status.pose.position.z})",
+                        f"Tag not detected, using color segmentation. Estimated pose: ({pose_status.pose.pose.position.x}, {pose_status.pose.pose.position.y}, {pose_status.pose.pose.position.z})",
                         throttle_duration_sec=1.0,
                     )
 
