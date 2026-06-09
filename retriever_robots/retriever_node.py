@@ -250,6 +250,7 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Found block, entering POSITIONING state to position for grab"
                     )
+                    self.grab_pose = deepcopy(self.observed_block_pose)
                     self.state = State.GRABBING
                 elif reached and not self.tag_visible:
                     self.logger.info(
@@ -257,17 +258,16 @@ class RetrieveNode(Node):
                     )
                     self.return_state = State.GRABBING
                     self.state = State.RECOVERY
-
-
             elif self.state == State.GRABBING:
                 # super naive, we should check for block in position here
                 # I think this is where we take down our barriers on the specific block
-                reached = self.go_to_pose(self.observed_block_pose)
+                reached = self.go_to_pose(self.grab_pose, controller=self.pose_controller)
                 self.logger.info(
-                    f"Going to block located at {self.observed_block_pose.pose}",
+                    f"Going to block located at {self.grab_pose.pose}",
                     throttle_duration_sec=1.0,
                 )
                 if reached:
+                    self.grab_pose = None
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, entering STOCKPILING state to stockpile block"
                     )
@@ -345,6 +345,7 @@ class RetrieveNode(Node):
                     cmd.angular.z = 0.2
                     self.vel_pub.publish(cmd)
                     continue
+                self.grab_pose = self.observed_block_pose
                 self.state = self.return_state
 
 
