@@ -112,7 +112,7 @@ class RetrieveNode(Node):
         self.logger.debug(f"Received Odometry: {msg}")
         self.odom = msg
         if self._start_pose is None:
-            self._start_pose = self.odom.pose.pose
+            self._start_pose = self.odom.pose
             self.start_pose_set = True
 
     def update_odom_state(self, valid_msg: Bool):
@@ -574,7 +574,7 @@ class RetrieveNode(Node):
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
 
         if controller is None:
-            controller = self.pose_controller
+            controller = self.pose_controller_clf
 
         cmd = controller(target_pose.pose)
         self.vel_pub.publish(cmd)
