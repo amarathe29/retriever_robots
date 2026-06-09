@@ -372,7 +372,7 @@ class RetrieveNode(Node):
         angle_to_target = np.arctan2(dy, dx)
         q_curr = self.curr_pose.pose.orientation
         _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w
+            q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
         )
         angle_diff = angle_wrap(angle_to_target - current_yaw)
         q_desired = target_pose.orientation
