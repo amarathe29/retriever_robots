@@ -181,7 +181,7 @@ class RetrieveNode(Node):
         pose.header = message.block.pose.header
         pose.pose.position = block_pose.position
 
-        if turn_magnitude > np.pi/2:
+        if turn_magnitude < np.pi/2:
             # position ourselves along the pos y-axis, facing the start
             pose.pose.position.x += BLOCK_OFFSET*np.sin(block_angle)
             pose.pose.position.y += BLOCK_OFFSET*np.cos(block_angle)
