@@ -36,6 +36,8 @@ class RetrieverActionTestNode(Node):
                                     Point32(x=stockpile[2][0], y=stockpile[2][1], z=0.0),
                                     Point32(x=stockpile[3][0], y=stockpile[3][1], z=0.0)]
 
+        stockpile_msg.header = goal_msg.block.pose.header
+
         goal_msg.stockpile = stockpile_msg
 
         self.retrieve_action_client.wait_for_server()
