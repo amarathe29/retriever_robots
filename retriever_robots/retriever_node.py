@@ -361,10 +361,10 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        self.logger.info(
-            f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
-            throttle_duration_sec=2.0,
-        )
+        # self.logger.info(
+        #     f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
+        #     throttle_duration_sec=2.0,
+        # )
 
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
@@ -375,9 +375,10 @@ class RetrieveNode(Node):
             q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
         )
         angle_diff = angle_wrap(angle_to_target - current_yaw)
+        self.logger.error(f"AngleDiff: {angle_diff:.2f} ({angle_to_target:.2f}-{current_yaw:.2f}) | Distance: {distance:.2f} [{dx:2.f}, {dy:.2f}]")
         q_desired = target_pose.orientation
         _, _, desired_yaw = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w
+            q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
         )
         desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
 
@@ -385,10 +386,10 @@ class RetrieveNode(Node):
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
-        self.logger.info(
-            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
-            throttle_duration_sec=1.0,
-        )
+        # self.logger.info(
+        #     f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
+        #     throttle_duration_sec=1.0,
+        # )
         if abs(angle_diff) > 0.04 and distance > 0.15:
             sgn = np.sign(angle_diff)
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
