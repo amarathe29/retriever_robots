@@ -355,7 +355,7 @@ class RetrieveNode(Node):
                     cmd.angular.z = 0.2
                     self.vel_pub.publish(cmd)
                     continue
-                self.grab_pose = self.observed_block_pose
+                self.grab_pose = self.save_block_pose()
                 self.state = self.return_state
 
 
