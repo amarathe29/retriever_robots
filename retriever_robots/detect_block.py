@@ -169,7 +169,7 @@ class DetectBlock(Node):
 
                     pose_status.tag_in_frame = True
                     pose_status.pose = mkr_robot_pose
-                    pose_status.type = ids[0] // 10
+                    pose_status.type = int(ids[0] // 10)
                     
                     
                     self.logger.info(
