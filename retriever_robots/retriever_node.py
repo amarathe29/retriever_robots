@@ -11,7 +11,13 @@ from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
 from retriever_msgs.msg import PoseStatus  # type: ignore
 
-from retriever_robots.utils import angle_wrap, euler_from_quaternion, reverse_yaw_quaternion, quaternion_from_euler, get_robot_barrier_func
+from retriever_robots.utils import (
+    angle_wrap,
+    euler_from_quaternion,
+    reverse_yaw_quaternion,
+    quaternion_from_euler,
+    get_robot_barrier_func,
+)
 
 import tf2_ros
 from tf2_geometry_msgs import do_transform_pose_stamped
@@ -20,10 +26,11 @@ import numpy as np
 from enum import Enum, auto
 from copy import deepcopy
 
+BLOCK_OFFSET = 0.4  # m
+REVERSE_DISTANCE = 0.4  # m
+STOCK_CLEARANCE = 1  # m clearance
 
-BLOCK_OFFSET = 0.4 #m
-REVERSE_DISTANCE = 0.4 #m
-STOCK_CLEARANCE = 1 # m clearance
+
 class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
@@ -67,7 +74,6 @@ class RetrieveNode(Node):
             Twist, f"{self.get_namespace()}/cmd_vel", 10
         )
 
-
         self.vis_pub = self.create_publisher(
             MarkerArray, f"{self.get_namespace()}/markers", 10
         )
@@ -106,7 +112,9 @@ class RetrieveNode(Node):
         self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
-        self.barrier_func = get_robot_barrier_func(boundary_points=[-3.0,3.0,-5.0,5.0])
+        self.barrier_func = get_robot_barrier_func(
+            boundary_points=[-3.0, 3.0, -5.0, 5.0]
+        )
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
@@ -130,7 +138,7 @@ class RetrieveNode(Node):
                     f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.pose.position.x}, {msg.pose.pose.position.y})",
                     throttle_duration_sec=1.0,
                 )
-                self.recovery_pose = msg.pose # currently unused
+                self.recovery_pose = msg.pose  # currently unused
             return
 
         if not msg.tag_in_frame:
@@ -155,7 +163,6 @@ class RetrieveNode(Node):
         self.missing_tag_count = 0
         self.observed_block_pose = msg.pose
 
-
     def print_pose_euler(self, pose: Pose) -> str:
         roll, pitch, yaw = euler_from_quaternion(
             pose.orientation.x,
@@ -165,16 +172,17 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-
     def calculate_nav_pose(self, message, stock_pt_safe):
         # given a message that contains both the block pose and the stockpile pose
         block_pose = message.block.pose.pose
-        
+
         block_pt = (block_pose.position.x, block_pose.position.y)
 
-        travel_angle = np.math.atan2(block_pt[1] - stock_pt_safe[1], block_pt[0]-stock_pt_safe[0])
+        travel_angle = np.math.atan2(
+            block_pt[1] - stock_pt_safe[1], block_pt[0] - stock_pt_safe[0]
+        )
 
-        _,_, block_angle = euler_from_quaternion(
+        _, _, block_angle = euler_from_quaternion(
             block_pose.orientation.x,
             block_pose.orientation.y,
             block_pose.orientation.z,
@@ -189,29 +197,34 @@ class RetrieveNode(Node):
         pose.header = message.block.pose.header
         pose.pose.position = block_pose.position
 
-        if turn_magnitude < np.pi/2:
+        if turn_magnitude < np.pi / 2:
             # position ourselves along the pos y-axis, facing the start
-            pose.pose.position.x += BLOCK_OFFSET*np.cos(block_angle)
-            pose.pose.position.y += BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.x += BLOCK_OFFSET * np.cos(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET * np.sin(block_angle)
             pose.pose.orientation = reverse_yaw_quaternion(block_pose.orientation)
 
         else:
-            pose.pose.position.x -= BLOCK_OFFSET*np.cos(block_angle)
-            pose.pose.position.y -= BLOCK_OFFSET*np.sin(block_angle)
+            pose.pose.position.x -= BLOCK_OFFSET * np.cos(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET * np.sin(block_angle)
             pose.pose.orientation = block_pose.orientation
-
 
         return pose
 
     def save_block_pose(self):
         block_loc = deepcopy(self.observed_block_pose)
-        transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time())
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time()
+        )
         res = do_transform_pose_stamped(block_loc, transform)
         res.pose.orientation = self.curr_pose.pose.orientation
         return res
 
     def calculate_exit_pose(self):
-        transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), self._namespaced_frame("base_link"), rclpy.time.Time())
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"),
+            self._namespaced_frame("base_link"),
+            rclpy.time.Time(),
+        )
         pos = PoseStamped()
         pos.header.frame_id = self._namespaced_frame("base_link")
         pos.header.stamp = self.get_clock().now().to_msg()
@@ -229,7 +242,6 @@ class RetrieveNode(Node):
             result.success = False
             return
 
-
         goal_reached = False
 
         while not goal_reached:
@@ -246,13 +258,17 @@ class RetrieveNode(Node):
                 self.stockpile.header = goal_handle.request.stockpile.header
                 self.stockpile.pose.position.x = stock_pt[0]
                 self.stockpile.pose.position.y = stock_pt[1]
-                self.stockpile.pose.orientation = quaternion_from_euler(yaw = 180, units="degrees")
+                self.stockpile.pose.orientation = quaternion_from_euler(
+                    yaw=180, units="degrees"
+                )
 
                 self.stockpile_safe = deepcopy(self.stockpile)
                 self.stockpile_safe.pose.position.x = stock_pt_safe[0]
                 self.stockpile_safe.pose.position.y = stock_pt_safe[1]
 
-                self.nav_pose = self.calculate_nav_pose(goal_handle.request, stock_pt_safe)
+                self.nav_pose = self.calculate_nav_pose(
+                    goal_handle.request, stock_pt_safe
+                )
                 self.observed_block_pose = None
                 self.block_type = goal_handle.request.block.type
 
@@ -279,7 +295,9 @@ class RetrieveNode(Node):
             elif self.state == State.GRABBING:
                 # super naive, we should check for block in position here
                 # I think this is where we take down our barriers on the specific block
-                reached = self.go_to_pose(self.grab_pose, controller=self.pose_controller)
+                reached = self.go_to_pose(
+                    self.grab_pose, controller=self.pose_controller
+                )
                 self.logger.info(
                     f"Going to block located at {self.grab_pose.pose}",
                     throttle_duration_sec=1.0,
@@ -326,20 +344,24 @@ class RetrieveNode(Node):
                 back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
                 if back_up:
                     self.state = State.STOCKPILE_DEPART
-                    
+
             elif self.state == State.STOCKPILE_DEPART:
-                self.stockpile_safe.pose.orientation = reverse_yaw_quaternion(self.stockpile_safe.pose.orientation)
+                self.stockpile_safe.pose.orientation = reverse_yaw_quaternion(
+                    self.stockpile_safe.pose.orientation
+                )
                 reached = self.go_to_pose(self.stockpile_safe)
                 if reached:
-                        self.logger.info(
-                            f"[{self.state.name}]Exited the stockpile successfully, returning to base"
-                        )
-                        self.state = State.RETURNING
+                    self.logger.info(
+                        f"[{self.state.name}]Exited the stockpile successfully, returning to base"
+                    )
+                    self.state = State.RETURNING
 
             # This state is just if we want the robot to return to the starting position
             elif self.state == State.RETURNING:
                 if self._start_pose is not None:
-                    goal_reached = self.go_to_pose(self._start_pose, controller=self.pose_controller_clf)
+                    goal_reached = self.go_to_pose(
+                        self._start_pose, controller=self.pose_controller_clf
+                    )
                     if goal_reached:
                         self.logger.info(
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
@@ -366,11 +388,14 @@ class RetrieveNode(Node):
                 self.grab_pose = self.save_block_pose()
                 self.state = self.return_state
 
-
         result = RetrievalTask.Result()
         result.success = False
         result.delivered = Block()
-        result.delivered.pose = self.observed_block_pose if self.observed_block_pose is not None else PoseStamped()
+        result.delivered.pose = (
+            self.observed_block_pose
+            if self.observed_block_pose is not None
+            else PoseStamped()
+        )
         return result
 
     def pose_controller(self, target_pose: Pose) -> Twist:
@@ -427,7 +452,7 @@ class RetrieveNode(Node):
 
     # TODO: Implement the robot moving backwards better than this
     def pose_controller_reverse(self, target_pose: Pose) -> Twist:
-        
+
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
@@ -539,8 +564,31 @@ class RetrieveNode(Node):
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
-        robo_pose = np.array([[self.curr_pose.pose.position.x],[self.curr_pose.pose.position.y],[self.curr_pose.pose.position.z]])
-        safe_cmd = self.barrier_func(cmd, robo_pose, neighbor_positions=np.array([[0.9], [0.0]]), block_positions=None)
+        curr_pose = self.curr_pose
+        curr_orientation = curr_pose.pose.orientation
+        _, _, curr_ori = euler_from_quaternion(
+            curr_orientation.x,
+            curr_orientation.y,
+            curr_orientation.z,
+            curr_orientation.w,
+        )
+        curr_position = [
+            curr_pose.pose.position.x,
+            curr_pose.pose.position.y,
+        ]
+        robo_pose = np.array(
+            [
+                [curr_position[0]],
+                [curr_position[1]],
+                [curr_ori],
+            ]
+        )
+        safe_cmd = self.barrier_func(
+            cmd,
+            robo_pose,
+            neighbor_positions=np.array([[0.9], [0.0]]),
+            block_positions=None,
+        )
         return safe_cmd
 
     def check_reached_target(self, target_pose: Pose) -> bool:
@@ -611,11 +659,11 @@ class RetrieveNode(Node):
     def update_visualization(self):
         msg = MarkerArray()
         marker_data = {
-            "curr_pose" : (self.curr_pose, (1.0,1.0,0.0)),
-            "observed_block" : (self.observed_block_pose, (1.0, 0.0, 0.0)),
-            "nav_pose" : (self.nav_pose, (0.0,1.0,1.0)),
-            "stockpile_pose" : (self.stockpile, (0.0,1.0,0.0)),
-            "stockpile_safe_pose" : (self.stockpile_safe, (0.0,0.0,1.0)),
+            "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
+            "observed_block": (self.observed_block_pose, (1.0, 0.0, 0.0)),
+            "nav_pose": (self.nav_pose, (0.0, 1.0, 1.0)),
+            "stockpile_pose": (self.stockpile, (0.0, 1.0, 0.0)),
+            "stockpile_safe_pose": (self.stockpile_safe, (0.0, 0.0, 1.0)),
         }
 
         for i, nary in enumerate(marker_data.items()):
@@ -638,7 +686,6 @@ class RetrieveNode(Node):
             m.color.a = 1.0
             m.pose = data[0].pose
             msg.markers.append(m)
-
 
         self.vis_pub.publish(msg)
 
