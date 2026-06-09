@@ -114,6 +114,8 @@ class RetrieveNode(Node):
 
     def visible_block_callback(self, msg: Pose) -> None:
 
+        self.update_visualization()
+
         if msg.block_in_frame and not msg.tag_in_frame:
             if self.state in [State.RECOVERY]:
                 self.logger.info(
@@ -144,7 +146,6 @@ class RetrieveNode(Node):
         self.tag_visible = True
         self.missing_tag_count = 0
         self.observed_block_pose = msg.pose
-        self.update_visualization()
 
 
     def print_pose_euler(self, pose: Pose) -> str:
