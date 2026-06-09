@@ -439,6 +439,7 @@ class RetrieveNode(Node):
 
         cmd = Twist()
         linear_gain = -0.3  # Arbitrary gain cause why not
+        rev_angular_gain = -0.7
         angular_gain = 0.7
 
         self.logger.info(
@@ -447,7 +448,7 @@ class RetrieveNode(Node):
         )
         if abs(angle_diff) > 0.04 and distance > 0.15:
             sgn = np.sign(angle_diff)
-            cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
+            cmd.angular.z = sgn * max(min(rev_angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
             if distance > 0.07:
                 sgn = np.sign(distance)
