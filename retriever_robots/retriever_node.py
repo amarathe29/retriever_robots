@@ -548,6 +548,7 @@ class RetrieveNode(Node):
                 continue
             m = Marker()
             m.header = data[0].header
+            m.header.stamp = 0
             m.ns = label
             m.type = Marker.ARROW
             m.action = Marker.ADD
