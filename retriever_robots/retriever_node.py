@@ -353,11 +353,11 @@ class RetrieveNode(Node):
             throttle_duration_sec=2.0,
         )
 
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
-        q_curr = self.curr_pose.orientation
+        q_curr = self.curr_pose.pose.orientation
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
@@ -414,15 +414,15 @@ class RetrieveNode(Node):
             f"Using CLF controller to go to {target_pose}, from {self.curr_pose}",
             throttle_duration_sec=1.0,
         )
-        q_curr = self.curr_pose.orientation
+        q_curr = self.curr_pose.pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
         q_desired = target_pose.orientation
         _, _, desired_theta = euler_from_quaternion(
             q_desired.x, q_desired.y, q_desired.z, q_desired.w
         )
 
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
 
         # We're going to do things in the frame of reference of the goal position, because apparently that makes behavior more consistent (shoutout to my old advisor for this controller)
         R = np.array(
@@ -475,11 +475,11 @@ class RetrieveNode(Node):
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
-        q_curr = self.curr_pose.orientation
+        q_curr = self.curr_pose.pose.orientation
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w
         )
@@ -524,7 +524,7 @@ class RetrieveNode(Node):
             return self.pose
         elif hasattr(self, "odom") and self.odom is not None:
             self.logger.debug("Using odometry topic")
-            return self.odom.pose.pose
+            return self.odom.pose
         else:
             self.logger.warning("No pose information available")
             return None
