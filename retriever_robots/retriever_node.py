@@ -189,8 +189,8 @@ class RetrieveNode(Node):
             pose.pose.orientation = mult_quat_msgs(block_pose.orientation, Quaternion(), flip_yaw=True)
 
         else:
-            pose.pose.position.x -= BLOCK_OFFSET*np.sin(block_angle)
-            pose.pose.position.y -= BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.x -= BLOCK_OFFSET*np.cos(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET*np.sin(block_angle)
             pose.pose.orientation = block_pose.orientation
 
 
