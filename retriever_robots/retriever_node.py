@@ -119,7 +119,7 @@ class RetrieveNode(Node):
         if msg.block_in_frame and not msg.tag_in_frame:
             if self.state in [State.RECOVERY]:
                 self.logger.info(
-                    f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.position.x}, {msg.pose.position.y})",
+                    f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.pose.position.x}, {msg.pose.pose.position.y})",
                     throttle_duration_sec=1.0,
                 )
                 self.recovery_pose = msg.pose # currently unused
