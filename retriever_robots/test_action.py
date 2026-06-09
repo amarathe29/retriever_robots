@@ -27,8 +27,8 @@ class RetrieverActionTestNode(Node):
         goal_msg.block.pose.pose.position.y = y
         goal_msg.block.pose.pose.position.z = 0.0
         goal_msg.block.pose.pose.orientation = quat
-        goal_msg.block.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.block.header.frame_id = "asher/odom"
+        goal_msg.block.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.block.pose.header.frame_id = "asher/odom"
 
         stockpile_msg = PolygonStamped()
         stockpile_msg.polygon.points = [Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
