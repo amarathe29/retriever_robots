@@ -36,33 +36,42 @@ def do_transform_transform(t1: TransformStamped, t2: TransformStamped):
 
 def convert_transform_to_matrix(transform: TransformStamped):
     T = np.eye(4)
-    T[0:3, 0:3] = Rotation.from_quat([
-        transform.transform.rotation.x,
-        transform.transform.rotation.y,
-        transform.transform.rotation.z,
-        transform.transform.rotation.w,
-    ]).as_matrix()
-    T[0:3, 3] = np.array([
-        transform.transform.translation.x,
-        transform.transform.translation.y,
-        transform.transform.translation.z,
-    ])
+    T[0:3, 0:3] = Rotation.from_quat(
+        [
+            transform.transform.rotation.x,
+            transform.transform.rotation.y,
+            transform.transform.rotation.z,
+            transform.transform.rotation.w,
+        ]
+    ).as_matrix()
+    T[0:3, 3] = np.array(
+        [
+            transform.transform.translation.x,
+            transform.transform.translation.y,
+            transform.transform.translation.z,
+        ]
+    )
     return T
 
-def euler_from_quaternion(x: float, y: float, z: float, w: float, use_extrinsics: bool = False) -> Rotation:
+
+def euler_from_quaternion(
+    x: float, y: float, z: float, w: float, use_extrinsics: bool = False
+) -> Rotation:
     """
     Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
     in radians. Sequence: XYZ (Roll, Pitch, Yaw).
     """
-    return Rotation.from_quat([x, y, z, w]).as_euler("XYZ" if not use_extrinsics else "xyz")
+    return Rotation.from_quat([x, y, z, w]).as_euler(
+        "XYZ" if not use_extrinsics else "xyz"
+    )
 
 
-def reverse_yaw_quaternion(quat: Quaternion)-> Quaternion:
+def reverse_yaw_quaternion(quat: Quaternion) -> Quaternion:
     """
     Multiplies a ROS2 quaternion by a 180 degree rotation about the z axis.
     """
     R = Rotation.from_quat([quat.x, quat.y, quat.z, quat.w])
-    R2 = Rotation.from_quat([0,0,1,0])
+    R2 = Rotation.from_quat([0, 0, 1, 0])
     q_rot = (R2 * R).as_quat()
     return Quaternion(x=q_rot[0], y=q_rot[1], z=q_rot[2], w=q_rot[3])
 
@@ -77,14 +86,16 @@ def mult_quat_msgs(q1: Quaternion, q2: Quaternion, flip_yaw=False) -> Quaternion
     r_result = r1 * r2
 
     if flip_yaw:
-        r3 = Rotation.from_quat([0,0,1,0])
+        r3 = Rotation.from_quat([0, 0, 1, 0])
         r_result = r3 * r_result
     q_result = r_result.as_quat()
 
     return Quaternion(x=q_result[0], y=q_result[1], z=q_result[2], w=q_result[3])
 
 
-def quaternion_from_euler(roll: float = 0, pitch: float = 0, yaw: float = 0, units: str = "radians") -> list:
+def quaternion_from_euler(
+    roll: float = 0, pitch: float = 0, yaw: float = 0, units: str = "radians"
+) -> list:
     """
     Converts Euler angles (Roll, Pitch, Yaw) in radians into a Ros2 Quaternion
     """
@@ -93,7 +104,7 @@ def quaternion_from_euler(roll: float = 0, pitch: float = 0, yaw: float = 0, uni
         roll = np.radians(roll)
         pitch = np.radians(pitch)
         yaw = np.radians(yaw)
-    x,y,z,w = Rotation.from_euler("XYZ", [roll, pitch, yaw]).as_quat()
+    x, y, z, w = Rotation.from_euler("XYZ", [roll, pitch, yaw]).as_quat()
     return Quaternion(x=x, y=y, z=z, w=w)
 
 
@@ -115,17 +126,16 @@ def angle_wrap(angle: float) -> float:
     wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
     return wrapped
 
+
 def si_to_uni_vel(dxi, pose, projection_distance=0.03):
     d = projection_distance
-    h = float(pose[2].item()) if hasattr(pose[2], 'item') else float(pose[2])
-    T_inv = np.array([
-        [np.cos(h), np.sin(h)],
-        [-np.sin(h) / d, np.cos(h) / d]
-    ])
-    
+    h = float(pose[2].item()) if hasattr(pose[2], "item") else float(pose[2])
+    T_inv = np.array([[np.cos(h), np.sin(h)], [-np.sin(h) / d, np.cos(h) / d]])
+
     # Decoupled matrix multiplication
     dxu = T_inv @ dxi.reshape(2, 1)
     return dxu
+
 
 def uni_to_si_vel(dxu, pose, projection_distance=0.05):
     d = projection_distance
@@ -133,7 +143,7 @@ def uni_to_si_vel(dxu, pose, projection_distance=0.05):
     T = np.array([[1, 0], [0, d]])
 
     dxi = np.zeros((2, 1))
-    h = float(pose[2].item()) if hasattr(pose[2], 'item') else float(pose[2])
+    h = float(pose[2].item()) if hasattr(pose[2], "item") else float(pose[2])
     # Rotation matrix from body frame to world frame.
     R = np.array([[np.cos(h), -np.sin(h)], [np.sin(h), np.cos(h)]])
     dxi = R @ T @ dxu
@@ -142,12 +152,12 @@ def uni_to_si_vel(dxu, pose, projection_distance=0.05):
 
 
 def get_robot_barrier_func(
-    safety_radius: float = 0.7,
-    barrier_gain: float = 100.0,
-    magnitude_limit: float = 0.1,
+    safety_radius: float = 0.35,
+    barrier_gain: float = 60.0,
+    magnitude_limit: float = 0.2,
     boundary_points: np.array = None,
     build_area_points: np.array = None,
-    block_safety_radius: float = 0.15,
+    block_safety_radius: float = 0.07,
 ) -> callable:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.
@@ -204,16 +214,21 @@ def get_robot_barrier_func(
         num_constraints = M + B + 4 + 8 + 1
         A = np.zeros((num_constraints, 2))
         b = np.zeros(num_constraints)
-        position =  np.array([pose[0] + projection_distance * np.cos(pose[2]),pose[1] + projection_distance * np.sin(pose[2])]).flatten()
+        position = np.array(
+            [
+                pose[0] + projection_distance * np.cos(pose[2]),
+                pose[1] + projection_distance * np.sin(pose[2]),
+            ]
+        ).flatten()
         constraint_idx = 0
 
         # Avoid neighbor constraings, we don't know neighbor vels, so we don't have our solver worry about them
         for neighbor_ndx in range(M):
             neighbor_position = neighbor_positions[:, neighbor_ndx]
             diff = position - neighbor_position
-            h = np.dot(diff, diff) - safety_radius ** 2
+            h = np.dot(diff, diff) - safety_radius**2
             A[constraint_idx] = -2 * diff
-            b[constraint_idx] = barrier_gain * (h ** barrier_power)
+            b[constraint_idx] = barrier_gain * (h**barrier_power)
             constraint_idx += 1
 
         for block_ndx in range(B):
@@ -221,21 +236,37 @@ def get_robot_barrier_func(
             diff = position - block_position
             h = np.dot(diff, diff) - block_safety_radius**2
             A[constraint_idx] = -2 * diff
-            b[constraint_idx] = barrier_gain * (h ** barrier_power)
+            b[constraint_idx] = barrier_gain * (h**barrier_power)
             constraint_idx += 1
 
         # Boundary constraints
         A[constraint_idx] = [0, 1]
-        b[constraint_idx] = 0.4 * barrier_gain * (bp[3] - safety_radius / 2 - position[1]) ** barrier_power
+        b[constraint_idx] = (
+            0.4
+            * barrier_gain
+            * (bp[3] - safety_radius / 2 - position[1]) ** barrier_power
+        )
         constraint_idx += 1
         A[constraint_idx] = [0, -1]
-        b[constraint_idx] = 0.4 * barrier_gain * (position[1] - bp[2] - safety_radius / 2) ** barrier_power
+        b[constraint_idx] = (
+            0.4
+            * barrier_gain
+            * (position[1] - bp[2] - safety_radius / 2) ** barrier_power
+        )
         constraint_idx += 1
         A[constraint_idx] = [1, 0]
-        b[constraint_idx] = 0.4 * barrier_gain * (bp[1] - safety_radius / 2 - position[0]) ** barrier_power
+        b[constraint_idx] = (
+            0.4
+            * barrier_gain
+            * (bp[1] - safety_radius / 2 - position[0]) ** barrier_power
+        )
         constraint_idx += 1
         A[constraint_idx] = [-1, 0]
-        b[constraint_idx] = 0.4 * barrier_gain * (position[0] - bp[0] - safety_radius / 2) ** barrier_power
+        b[constraint_idx] = (
+            0.4
+            * barrier_gain
+            * (position[0] - bp[0] - safety_radius / 2) ** barrier_power
+        )
         constraint_idx += 1
 
         # Keep away constraints
@@ -252,7 +283,7 @@ def get_robot_barrier_func(
 
         h = np.linalg.norm(diff) - (circle_radius + buffer_zone)
         A[constraint_idx] = -2 * diff
-        b[constraint_idx] = barrier_gain * (h ** barrier_power)
+        b[constraint_idx] = barrier_gain * (h**barrier_power)
         constraint_idx += 1
 
         constraint_bounds = magnitude_limit * np.cos(np.pi / 8)
