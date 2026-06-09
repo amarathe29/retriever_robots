@@ -524,7 +524,11 @@ class RetrieveNode(Node):
             return self.pose
         elif hasattr(self, "odom") and self.odom is not None:
             self.logger.debug("Using odometry topic")
-            return self.odom.pose
+            pose = PoseStamped()
+            pose.header.frame_id = f"{self.get_namespace()}/odom"
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.pose = self.odom.pose.pose
+            return pose
         else:
             self.logger.warning("No pose information available")
             return None
