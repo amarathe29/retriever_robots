@@ -200,8 +200,6 @@ class RetrieveNode(Node):
     ) -> PoseStamped:
         # given a message that contains both the block pose and the stockpile pose
         block_pose_stamped = message.block.pose
-        transform = self.get_odom_transform(block_pose_stamped)
-        block_pose_stamped = do_transform_pose_stamped(block_pose_stamped, transform)
 
         block_pt = (
             block_pose_stamped.pose.position.x,
@@ -230,6 +228,9 @@ class RetrieveNode(Node):
         else:
             pose.pose.position.x -= BLOCK_OFFSET * np.cos(block_angle)
             pose.pose.position.y -= BLOCK_OFFSET * np.sin(block_angle)
+
+        transform = self.get_odom_transform(pose)
+        pose = do_transform_pose_stamped(pose, transform)
 
         return pose
 
