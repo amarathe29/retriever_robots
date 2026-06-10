@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer, ServerGoalHandle
+from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, PoseStamped, Quaternion
@@ -267,7 +267,7 @@ class RetrieveNode(Node):
         result.delivered.pose = pose or PoseStamped()
         return result
 
-    def retrieve_callback(self, goal_handle: ServerGoalHandle[RetrievalTask]) -> RetrievalTask.Result:
+    def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
 
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
