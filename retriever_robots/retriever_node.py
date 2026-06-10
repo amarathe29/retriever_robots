@@ -564,6 +564,10 @@ class RetrieveNode(Node):
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
 
+        if self.curr_pose is None:
+            self.logger.warning("Current pose is unknown, cannot navigate")
+            return Twist, False
+
         self.logger.info(
             f"Using CLF controller to go to {target_pose}, from {self.curr_pose.pose}",
             throttle_duration_sec=1.0,
