@@ -97,7 +97,6 @@ class RetrieveNode(Node):
         self.logger = self.get_logger()
         self.logger.info(f"Launched Retrieve Node for {self.get_namespace()}")
 
-        self.marker_size = 0.0544
 
         self.state = State.IDLE
         self.return_state = State.NAVIGATING

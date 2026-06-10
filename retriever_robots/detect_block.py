@@ -18,7 +18,7 @@ import message_filters
 from scipy.spatial.transform import Rotation
 
 
-MARKER_SIZE = 0.0544
+MARKER_SIZE = 0.0389
 OBJ_PTS = np.array(
     [
         [-MARKER_SIZE / 2, MARKER_SIZE / 2, 0.0],
