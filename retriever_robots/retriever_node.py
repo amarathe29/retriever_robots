@@ -202,33 +202,34 @@ class RetrieveNode(Node):
         block_pose_stamped = message.block.pose
         transform = self.get_odom_transform(block_pose_stamped)
         block_pose_stamped = do_transform_pose_stamped(block_pose_stamped, transform)
-        block_pose = block_pose_stamped.pose
 
-        block_pt = (block_pose.position.x, block_pose.position.y)
+        block_pt = (
+            block_pose_stamped.pose.position.x,
+            block_pose_stamped.pose.position.y,
+        )
 
         travel_angle = np.math.atan2(
             block_pt[1] - stock_pt_safe[1], block_pt[0] - stock_pt_safe[0]
         )
 
-        block_angle = yaw_from_quaternion(q=block_pose.orientation, use_extrinsics=True)
+        block_angle = yaw_from_quaternion(
+            q=block_pose_stamped.pose.orientation, use_extrinsics=True
+        )
 
         # this is how much angle the robot needs to rotate through in order to bring the block to the stockpile (directly)
         turn_magnitude = np.abs(travel_angle - block_angle)
 
-        pose = PoseStamped()
-        pose.header = message.block.pose.header
-        pose.pose.position = block_pose.position
+        pose = block_pose_stamped
 
         if turn_magnitude < np.pi / 2:
             # position ourselves along the pos y-axis, facing the start
             pose.pose.position.x += BLOCK_OFFSET * np.cos(block_angle)
             pose.pose.position.y += BLOCK_OFFSET * np.sin(block_angle)
-            pose.pose.orientation = reverse_yaw_quaternion(block_pose.orientation)
+            pose.pose.orientation = reverse_yaw_quaternion(pose.pose.orientation)
 
         else:
             pose.pose.position.x -= BLOCK_OFFSET * np.cos(block_angle)
             pose.pose.position.y -= BLOCK_OFFSET * np.sin(block_angle)
-            pose.pose.orientation = block_pose.orientation
 
         return pose
 
