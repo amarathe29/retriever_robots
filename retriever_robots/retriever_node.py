@@ -81,7 +81,7 @@ class RetrieveNode(Node):
         )
 
         self.block_sub = self.create_subscription(
-            OccupancyGrid, "/block_poses", self.block_callback, 10
+            OccupancyGrid, "/block_mask", self.block_callback, 10
         )
 
         # Set up publisher
