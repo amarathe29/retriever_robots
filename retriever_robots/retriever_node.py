@@ -200,7 +200,7 @@ class RetrieveNode(Node):
     ) -> PoseStamped:
         # given a message that contains both the block pose and the stockpile pose
         block_pose_stamped = message.block.pose
-        transform = self.get_odom_transform(message.block)
+        transform = self.get_odom_transform(block_pose_stamped)
         block_pose_stamped = do_transform_pose_stamped(block_pose_stamped, transform)
         block_pose = block_pose_stamped.pose
 
