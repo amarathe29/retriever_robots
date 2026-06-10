@@ -219,7 +219,7 @@ def get_robot_barrier_func(
         bap = (
             build_area_points
             if build_area_points is not None
-            else np.array([1.5, 3, 0, 1.5])
+            else np.array([0, 1, 2, 3])
         )
 
         num_constraints = M + B + 4 + 8 + 1
