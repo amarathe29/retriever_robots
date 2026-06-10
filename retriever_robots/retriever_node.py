@@ -254,13 +254,13 @@ class RetrieveNode(Node):
         elif not self.tag_visible:
             self.send_to_recovery()
 
-    def send_to_recovery(self, msg: str | None = None) -> None:
+    def send_to_recovery(self, msg: str = None) -> None:
         message = msg if msg is not None else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
         self.logger.info(message)
         self.return_state = State.GRABBING
         self.state = State.RECOVERY
 
-    def create_result(self, success: bool, pose: PoseStamped | None = None) -> RetrievalTask.Result:
+    def create_result(self, success: bool, pose: PoseStamped = None) -> RetrievalTask.Result:
         result = RetrievalTask.Result()
         result.success = success
         result.delivered = Block()
@@ -550,7 +550,7 @@ class RetrieveNode(Node):
     def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
     
-    def go_to_pose(self, target_pose: PoseStamped, controller: Callable[[Pose], tuple[Twist, bool]] | None = None) -> bool:
+    def go_to_pose(self, target_pose: PoseStamped, controller: Callable[[Pose], tuple[Twist, bool]] = None) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
 

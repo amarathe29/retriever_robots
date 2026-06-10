@@ -159,8 +159,8 @@ def get_robot_barrier_func(
     safety_radius: float = 0.35,
     barrier_gain: float = 20.0,
     magnitude_limit: float = 0.2,
-    boundary_points: np.array | None = None,
-    build_area_points: np.array | None = None,
+    boundary_points: np.array = None,
+    build_area_points: np.array = None,
     block_safety_radius: float = 0.07,
     projection_dist: float = 0.15,
 ) -> callable:
@@ -179,8 +179,8 @@ def get_robot_barrier_func(
     def barrier_func(
         unsafe_cmd: Twist,
         pose: np.array,
-        neighbor_positions: np.array | None = None,
-        block_positions: np.array | None = None,
+        neighbor_positions: np.array = None,
+        block_positions: np.array = None,
     ) -> Twist:
         """_summary_
 
