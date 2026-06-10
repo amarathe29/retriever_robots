@@ -247,26 +247,32 @@ class RetrieveNode(Node):
         row_mask, col_mask = np.where(block_arr > 0)
         x_positions = (col_mask * resolution) + origin.position.x
         y_positions = (row_mask * resolution) + origin.position.y
-        transform = self.tf_buffer.lookup_transform(
-            self._namespaced_frame("odom"), "world", rclpy.time.Time()
-        )
-        transformed_x = []
-        transformed_y = []
-        for x, y in (x_positions, y_positions):
-            pt = PointStamped()
-            pt.header.stamp = self.get_clock().now().to_msg()
-            pt.header.frame_id = "world"
-            pt.point.x = x
-            pt.point.y = y
 
-            transformed_pt = do_transform_point(pt, transform)
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self._namespaced_frame("odom"), "world", rclpy.time.Time()
+            )
+            transformed_x = []
+            transformed_y = []
+            for x, y in (x_positions, y_positions):
+                pt = PointStamped()
+                pt.header.stamp = self.get_clock().now().to_msg()
+                pt.header.frame_id = "world"
+                pt.point.x = x
+                pt.point.y = y
 
-            transformed_x.append(transformed_pt.point.x)
-            transformed_y.append(transformed_pt.point.y)
+                transformed_pt = do_transform_point(pt, transform)
 
-        self.block_positions = np.vstack(
-            np.array(transformed_x), np.array(transformed_y)
-        )
+                transformed_x.append(transformed_pt.point.x)
+                transformed_y.append(transformed_pt.point.y)
+
+            self.block_positions = np.vstack(
+                np.array(transformed_x), np.array(transformed_y)
+            )
+        except Exception:
+            self.logger.warn(f"Failed to find the block positions", throttle_duration_sec=5.0)
+            return
+
 
     def build_area_callback(self, msg: PolygonStamped):
         transform = self.tf_buffer.lookup_transform(
