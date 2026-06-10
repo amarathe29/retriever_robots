@@ -10,13 +10,16 @@ from retriever_robots.utils import quaternion_from_euler
 
 import numpy as np
 
+
 class RetrieverActionTestNode(Node):
     def __init__(self):
         super().__init__("retriever_action_test_node")
-        self.retrieve_action_client = ActionClient(self, RetrievalTask, "asher/retrieve_block")
+        self.retrieve_action_client = ActionClient(
+            self, RetrievalTask, "asher/retrieve_block"
+        )
 
     def send_retrieval_goal(self, position, stockpile, type=0, quat=None):
-        x,y,_ = position
+        x, y, _ = position
         if quat is None:
             quat = Quaternion()
 
@@ -28,13 +31,15 @@ class RetrieverActionTestNode(Node):
         goal_msg.block.pose.pose.position.z = 0.0
         goal_msg.block.pose.pose.orientation = quat
         goal_msg.block.pose.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.block.pose.header.frame_id = "asher/odom"
+        goal_msg.block.pose.header.frame_id = "world"
 
         stockpile_msg = PolygonStamped()
-        stockpile_msg.polygon.points = [Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
-                                    Point32(x=stockpile[1][0], y=stockpile[1][1], z=0.0),
-                                    Point32(x=stockpile[2][0], y=stockpile[2][1], z=0.0),
-                                    Point32(x=stockpile[3][0], y=stockpile[3][1], z=0.0)]
+        stockpile_msg.polygon.points = [
+            Point32(x=stockpile[0][0], y=stockpile[0][1], z=0.0),
+            Point32(x=stockpile[1][0], y=stockpile[1][1], z=0.0),
+            Point32(x=stockpile[2][0], y=stockpile[2][1], z=0.0),
+            Point32(x=stockpile[3][0], y=stockpile[3][1], z=0.0),
+        ]
 
         stockpile_msg.header = goal_msg.block.pose.header
 
@@ -44,13 +49,12 @@ class RetrieverActionTestNode(Node):
         goal = self.retrieve_action_client.send_goal_async(goal_msg)
         goal.add_done_callback(self.handle_result)
 
-
     def handle_result(self, future):
 
         self.goal_handle = future.result()
 
         if not self.goal_handle.accepted:
-            self.get_logger().info('Goal rejected')
+            self.get_logger().info("Goal rejected")
             return
 
         self.result_handle = self.goal_handle.get_result_async()
@@ -68,13 +72,14 @@ class RetrieverActionTestNode(Node):
 def main():
     rclpy.init()
     point = [1.8, 0.0, 0.0]
-    stockpile = 2*np.ones((4,2)) 
+    stockpile = 2 * np.ones((4, 2))
     node = RetrieverActionTestNode()
     quat = quaternion_from_euler(yaw=45, units="degrees")
     print(f"Going to point {point}")
     node.send_retrieval_goal(point, stockpile, 1, quat)
     rclpy.spin(node)
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
