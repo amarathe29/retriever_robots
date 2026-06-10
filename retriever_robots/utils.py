@@ -3,8 +3,8 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation
 from geometry_msgs.msg import Quaternion, Twist, TransformStamped
-from cvxopt import matrix, sparse
-from cvxopt.solvers import qp, options
+from cvxopt import matrix, sparse # type: ignore
+from cvxopt.solvers import qp, options # type: ignore
 from rclpy.logging import get_logger
 
 options["show_progress"] = False

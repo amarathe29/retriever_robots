@@ -5,7 +5,7 @@ from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, PoseStamped, Quaternion
 from visualization_msgs.msg import MarkerArray, Marker
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 from std_msgs.msg import Bool
 from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
@@ -69,6 +69,8 @@ class RetrieveNode(Node):
             10,
         )
 
+        self.block_sub = self.create_subscription(OccupancyGrid, "/block_poses", self.block_callback, 10)
+
         # Set up publisher
         self.vel_pub = self.create_publisher(
             Twist, f"{self.get_namespace()}/cmd_vel", 10
@@ -103,6 +105,7 @@ class RetrieveNode(Node):
         self._start_pose = None
 
         self.block_type = None
+        self.block_positions = None
         self.nav_pose = None
         self.observed_block_pose = None
         self.stockpile = None
@@ -112,6 +115,10 @@ class RetrieveNode(Node):
         self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
+        
+        # TODO: Check the name of the Jackal, also potentially use the tf tree to figure out the boundaries???
+        self.neighbor_list = ["sierra/odom","100/odom"] 
+        # TODO: Check the boundary points and build points that we need to give (I think we hardcode these if possible)
         self.barrier_func = get_robot_barrier_func(
             boundary_points=[-3.0, 3.0, -5.0, 5.0]
         )
@@ -209,6 +216,15 @@ class RetrieveNode(Node):
             pose.pose.orientation = block_pose.orientation
 
         return pose
+
+    def block_callback(self, msg):
+        block_arr = np.array(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width)
+        origin = msg.info.origin
+        resolution = msg.info.resoltion
+        row_mask, col_mask = np.where(block_arr > 0)
+        x_positions = (col_mask * resolution) + origin.position.x
+        y_positions = (row_mask * resolution) + origin.position.y
+        self.block_positions = np.vstack()
 
     def save_block_pose(self):
         block_loc = deepcopy(self.observed_block_pose)
@@ -397,8 +413,13 @@ class RetrieveNode(Node):
             else PoseStamped()
         )
         return result
+    
+    def send_to_recovery(self):
+        pass
 
-    def pose_controller(self, target_pose: Pose) -> Twist:
+
+    # TODO: MAKE THE CONTROLLERS RETURN TRUE WHEN REACHED INSTEAD OF HAVING A SEPARATE FUNCTION CHECKING TO REDUCE DELAYS
+    def pose_controller(self, target_pose: Pose, reversed: bool=False) -> Twist:
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
@@ -408,7 +429,7 @@ class RetrieveNode(Node):
             f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
             throttle_duration_sec=2.0,
         )
-
+        reached = False
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
@@ -417,7 +438,7 @@ class RetrieveNode(Node):
         _, _, current_yaw = euler_from_quaternion(
             q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
         )
-        angle_diff = angle_wrap(angle_to_target - current_yaw)
+        angle_diff = angle_wrap(angle_to_target - current_yaw) if not reversed else angle_wrap(angle_to_target - (current_yaw + np.pi))
         q_desired = target_pose.orientation
         _, _, desired_yaw = euler_from_quaternion(
             q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
@@ -437,7 +458,7 @@ class RetrieveNode(Node):
             cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
             if distance > 0.07:
-                sgn = np.sign(distance)
+                sgn = np.sign(distance) if not reversed else -np.sign(distance)
                 cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
             else:
                 if abs(desired_yaw_diff) > 0.04:
@@ -446,59 +467,14 @@ class RetrieveNode(Node):
                         min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
                     )
                 else:
-                    return Twist()
+                    reached = True
+                    # TODO: Arguably, this should just change reached and not return, and allow the final statement to take care of that
+                    return Twist(), reached
 
-        return cmd
-
-    # TODO: Implement the robot moving backwards better than this
-    def pose_controller_reverse(self, target_pose: Pose) -> Twist:
-
-        dx = target_pose.position.x - self.curr_pose.pose.position.x
-        dy = target_pose.position.y - self.curr_pose.pose.position.y
-        distance = np.sqrt(dx**2 + dy**2)
-        angle_to_target = np.arctan2(dy, dx)
-        q_curr = self.curr_pose.pose.orientation
-        _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
-        )
-        angle_diff = angle_wrap(angle_to_target - (current_yaw + np.pi))
-        q_desired = target_pose.orientation
-        _, _, desired_yaw = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
-        )
-        desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
-
-        cmd = Twist()
-        linear_gain = 0.3  # Arbitrary gain cause why not
-        angular_gain = 0.7
-
-        self.logger.info(
-            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
-            throttle_duration_sec=1.0,
-        )
-        if abs(angle_diff) > 0.04 and distance > 0.15:
-            sgn = np.sign(angle_diff)
-            cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
-        else:
-            if distance > 0.07:
-                sgn = -np.sign(distance)
-                cmd.linear.x = sgn * max(min(linear_gain * abs(distance), 0.2), 0.05)
-            else:
-                if abs(desired_yaw_diff) > 0.04:
-                    sgn = np.sign(desired_yaw_diff)
-                    cmd.angular.z = sgn * max(
-                        min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
-                    )
-                else:
-                    return Twist()
-
-        return cmd
-
-    def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
-        return self.pose_controller_clf(target_pose, forward_constraint=True)
+        return cmd, reached
 
     # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
-    # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
+    # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
     def pose_controller_clf(
         self, target_pose: Pose, gamma=0.7, k=1.0, h=0.7, forward_constraint=False
     ) -> Twist:
@@ -510,6 +486,7 @@ class RetrieveNode(Node):
             f"Using CLF controller to go to {target_pose}, from {self.curr_pose.pose}",
             throttle_duration_sec=1.0,
         )
+        reached = False
         q_curr = self.curr_pose.pose.orientation
         _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
         q_desired = target_pose.orientation
@@ -558,8 +535,9 @@ class RetrieveNode(Node):
 
         if e < 0.025:
             self.logger.info("Position error low", throttle_duration_sec=1.0)
-        if alpha < 0.05:
-            self.logger.info("Angular error low", throttle_duration_sec=1.0)
+            if alpha < 0.05:
+                self.logger.info("Angular error low", throttle_duration_sec=1.0)
+                reached = True
 
         cmd = Twist()
         cmd.linear.x = v
@@ -583,43 +561,25 @@ class RetrieveNode(Node):
                 [curr_ori],
             ]
         )
+        # I don't want to risk the barriers affecting the block positions in case we use them elsewhere
+        # TODO: Also doublecheck the shapes on these things
+        block_positions = deepcopy(self.block_positions)
+        neighbor_positions = deepcopy(self.neighbor_positions)
         safe_cmd = self.barrier_func(
             cmd,
             robo_pose,
-            neighbor_positions=np.array([[0.9], [0.0]]),
-            block_positions=None,
+            neighbor_positions=neighbor_positions,
+            block_positions=block_positions,
         )
-        return safe_cmd
+        return safe_cmd, reached
+    
+    # TODO: Implement the robot moving backwards better than this. Made it somewhat better
+    def pose_controller_reverse(self, target_pose: Pose) -> Twist:
+        return self.pose_controller(target_pose=target_pose, reversed=True)
 
-    def check_reached_target(self, target_pose: Pose) -> bool:
-        if self.curr_pose is None:
-            self.logger.warning("Current pose is unknown, cannot navigate")
-            return
-
-        dx = target_pose.position.x - self.curr_pose.pose.position.x
-        dy = target_pose.position.y - self.curr_pose.pose.position.y
-        distance = np.sqrt(dx**2 + dy**2)
-        q_curr = self.curr_pose.pose.orientation
-        _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w
-        )
-        q_target = target_pose.orientation
-        _, _, desired_yaw = euler_from_quaternion(
-            q_target.x, q_target.y, q_target.z, q_target.w
-        )
-        angle_diff = angle_wrap(desired_yaw - current_yaw)
-
-        self.logger.info(
-            f"Distance remaining: {distance}, Angle difference: {angle_diff}",
-            throttle_duration_sec=1.0,
-        )
-
-        # If we haven't reached the target, return false, else we return true
-        if abs(angle_diff) >= 0.08 or distance >= 0.1:
-            return False
-
-        return True
-
+    def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
+        return self.pose_controller_clf(target_pose, forward_constraint=True)
+    
     def go_to_pose(self, target_pose: PoseStamped, controller=None) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
@@ -627,30 +587,12 @@ class RetrieveNode(Node):
         if controller is None:
             controller = self.pose_controller_clf
 
-        cmd = controller(target_pose.pose)
+        cmd, reached = controller(target_pose.pose)
         self.vel_pub.publish(cmd)
-        reached = self.check_reached_target(target_pose.pose)
         return reached
 
     def brake(self):
         self.vel_pub.publish(Twist())
-
-    # TODO: use the world frame and published aruco tags to update the robots position
-    @property
-    def curr_pose(self):
-        if hasattr(self, "pose") and self.pose is not None:
-            self.logger.debug("Using pose topic")
-            return self.pose
-        elif hasattr(self, "odom") and self.odom is not None:
-            self.logger.debug("Using odometry topic")
-            pose = PoseStamped()
-            pose.header.frame_id = self._namespaced_frame("odom")
-            pose.header.stamp = self.get_clock().now().to_msg()
-            pose.pose = self.odom.pose.pose
-            return pose
-        else:
-            self.logger.warning("No pose information available")
-            return None
 
     def _namespaced_frame(self, frame_name):
         ns = self.get_namespace().strip("/")
@@ -689,6 +631,38 @@ class RetrieveNode(Node):
 
         self.vis_pub.publish(msg)
 
+
+    # TODO: use the world frame and published aruco tags to update the robots position
+    @property
+    def curr_pose(self):
+        if hasattr(self, "pose") and self.pose is not None:
+            self.logger.debug("Using pose topic")
+            return self.pose
+        elif hasattr(self, "odom") and self.odom is not None:
+            self.logger.debug("Using odometry topic")
+            pose = PoseStamped()
+            pose.header.frame_id = self._namespaced_frame("odom")
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.pose = self.odom.pose.pose
+            return pose
+        else:
+            self.logger.warning("No pose information available")
+            return None
+    
+    # TODO: Does it make sense to do this as a property? Yes, it does, don't question it
+    @property
+    def neighbor_positions(self):
+        positions = np.zeros((2,len(self.neighbor_list)))
+        for ndx, neighbor_frame in enumerate(self.neighbor_list):
+            try:
+                transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), neighbor_frame, rclpy.time.Time())
+                positions[0, ndx] = transform.transform.translation.x
+                positions[1, ndx] = transform.transform.translation.y
+            except Exception as e:
+                self.logger.error(f"Could not compute neighbor transform: {e}")
+                positions[0, ndx] = 0
+                positions[1, ndx] = 0
+        return positions
 
 def main():
     rclpy.init()
