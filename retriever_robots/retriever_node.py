@@ -118,7 +118,7 @@ class RetrieveNode(Node):
         self.valid_tf_tree = False
         
         # TODO: Check the name of the Jackal, also potentially use the tf tree to figure out the boundaries???
-        self.neighbor_list = ["sierra/odom","100/odom"] 
+        self.neighbor_list = ["aruco_31","aruco_15"] 
         # TODO: Check the boundary points and build points that we need to give (I think we hardcode these if possible)
         self.barrier_func = get_robot_barrier_func(
             boundary_points=[-3.0, 3.0, -5.0, 5.0]
