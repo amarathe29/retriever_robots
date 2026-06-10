@@ -65,6 +65,10 @@ def euler_from_quaternion(
         "XYZ" if not use_extrinsics else "xyz"
     )
 
+def yaw_from_quaternion(q: Quaternion, use_extrinsics: bool = False):
+    _, _, yaw = euler_from_quaternion(x=q.x, y=q.y, z=q.z, w=q.w,  use_extrinsics=use_extrinsics)
+    return yaw
+
 
 def reverse_yaw_quaternion(quat: Quaternion) -> Quaternion:
     """
@@ -175,7 +179,7 @@ def get_robot_barrier_func(
     def barrier_func(
         unsafe_cmd: Twist,
         pose: np.array,
-        neighbor_positions: np.array,
+        neighbor_positions: np.array = None,
         block_positions: np.array = None,
     ) -> Twist:
         """_summary_
@@ -184,10 +188,16 @@ def get_robot_barrier_func(
             unsafe_cmd (Twist): The unsafe velocity
             pose (np.array): 3 x 1 array denoting the current pose of the robot [[x], [y], [theta]]
             neighbor_positions (np.array): 2 x M array denoting the positions of the M neighbors of the robot [[x_1, y_1],[x_2, y_2]]
+            block_positions (np.array): 2 x B array denoting the positions of the B blocks in the space [[x_1, y_1],[x_2, y_2]]
 
         Returns:
             Twist: A safe velocity
         """
+        if neighbor_positions is not None:
+            assert neighbor_positions.shape[0] == 2, "Neighbor positions is incorrect shape"
+        if block_positions is not None:
+            assert block_positions.shape[0] == 2, "Block positions is incorrect shape"
+            
         barrier_power = 3
         dxu = np.array([[unsafe_cmd.linear.x], [unsafe_cmd.angular.z]])
         projection_distance = projection_dist

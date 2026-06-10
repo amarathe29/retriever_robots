@@ -17,6 +17,7 @@ from retriever_robots.utils import (
     reverse_yaw_quaternion,
     quaternion_from_euler,
     get_robot_barrier_func,
+    yaw_from_quaternion
 )
 
 import tf2_ros
@@ -189,13 +190,7 @@ class RetrieveNode(Node):
             block_pt[1] - stock_pt_safe[1], block_pt[0] - stock_pt_safe[0]
         )
 
-        _, _, block_angle = euler_from_quaternion(
-            block_pose.orientation.x,
-            block_pose.orientation.y,
-            block_pose.orientation.z,
-            block_pose.orientation.w,
-            use_extrinsics=True,
-        )
+        block_angle = yaw_from_quaternion(q=block_pose.orientation, use_extrinsics=True)
 
         # this is how much angle the robot needs to rotate through in order to bring the block to the stockpile (directly)
         turn_magnitude = np.abs(travel_angle - block_angle)
@@ -246,6 +241,31 @@ class RetrieveNode(Node):
         pos.header.stamp = self.get_clock().now().to_msg()
         pos.pose.position.x = -REVERSE_DISTANCE
         return do_transform_pose_stamped(pos, transform)
+
+
+    def stockpile_behavior(self, pose_location: Pose, msg: str, next_state: State):
+        reached = self.go_to_pose(pose_location)
+        if self.tag_visible and reached:
+            self.logger.info(
+                f"[{self.state.name}]{msg}"
+            )
+            self.exit_pose = self.calculate_exit_pose()
+            self.state = next_state
+        elif not self.tag_visible:
+            self.send_to_recovery()
+
+    def send_to_recovery(self, msg: str = None):
+        message = msg if msg is not None else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
+        self.logger.info(message)
+        self.return_state = State.GRABBING
+        self.state = State.RECOVERY
+
+    def create_result(self, success, pose=None):
+        result = RetrievalTask.Result()
+        result.success = success
+        result.delivered = Block()
+        result.delivered.pose = pose or PoseStamped()
+        return result
 
     def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
@@ -300,14 +320,11 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Found block, entering GRABBING state to acquire block"
                     )
                     self.grab_pose = self.save_block_pose()
-
                     self.state = State.GRABBING
+
                 elif reached and not self.tag_visible:
-                    self.logger.info(
-                        f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
-                    )
-                    self.return_state = State.GRABBING
-                    self.state = State.RECOVERY
+                    self.send_to_recovery(msg=f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery")
+
             elif self.state == State.GRABBING:
                 # super naive, we should check for block in position here
                 # I think this is where we take down our barriers on the specific block
@@ -326,35 +343,12 @@ class RetrieveNode(Node):
                     self.state = State.STOCKPILE_PREP
 
             elif self.state == State.STOCKPILE_PREP:
-                # move to the safe stockpile location
-                reached = self.go_to_pose(self.stockpile_safe)
-                if self.tag_visible and reached:
-                    self.logger.info(
-                        f"[{self.state.name}]Reached Safe Stockpile Point, attempting DEPOSIT"
-                    )
-                    self.state = State.STOCKPILE_DEPOSIT
-                elif not self.tag_visible:
-                    self.logger.info(
-                        f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
-                    )
-                    self.return_state = State.GRABBING
-                    self.state = State.RECOVERY
+                # move to a safe stockpiling location
+                self.stockpile_behavior(pose_location=self.stockpile_safe, msg="Reached Safe Stockpile Point, attempting DEPOSIT", next_state=State.STOCKPILE_DEPOSIT)
 
             elif self.state == State.STOCKPILE_DEPOSIT:
                 # move to the specific stockpile location
-                reached = self.go_to_pose(self.stockpile)
-                if self.tag_visible and reached:
-                    self.logger.info(
-                        f"[{self.state.name}]Stockpiled block, attempting to EXIT the STOCKPILE"
-                    )
-                    self.exit_pose = self.calculate_exit_pose()
-                    self.state = State.STOCKPILE_EXIT
-                elif not self.tag_visible:
-                    self.logger.info(
-                        f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
-                    )
-                    self.return_state = State.GRABBING
-                    self.state = State.RECOVERY
+                self.stockpile_behavior(pose_location=self.stockpile, msg="Stockpiled block, attempting to EXIT the STOCKPILE", next_state=State.STOCKPILE_EXIT)
 
             elif self.state == State.STOCKPILE_EXIT:
                 back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
@@ -383,16 +377,12 @@ class RetrieveNode(Node):
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
                         )
                         goal_handle.succeed()
-                        result = RetrievalTask.Result()
-                        result.success = True
-                        result.delivered = Block()
-                        result.delivered.pose = self.observed_block_pose
+                        result = self.create_result(success=True, pose=self.observed_block_pose)
                         self.state = State.IDLE
                         return result
 
             elif self.state == State.RECOVERY:
                 cmd = Twist()
-
                 if not self.tag_visible:
                     self.logger.warning(
                         "No recovery pose available, spinning robot",
@@ -404,21 +394,9 @@ class RetrieveNode(Node):
                 self.grab_pose = self.save_block_pose()
                 self.state = self.return_state
 
-        result = RetrievalTask.Result()
-        result.success = False
-        result.delivered = Block()
-        result.delivered.pose = (
-            self.observed_block_pose
-            if self.observed_block_pose is not None
-            else PoseStamped()
-        )
+        result = self.create_result(success=False, pose=self.observed_block_pose)
         return result
-    
-    def send_to_recovery(self):
-        pass
 
-
-    # TODO: MAKE THE CONTROLLERS RETURN TRUE WHEN REACHED INSTEAD OF HAVING A SEPARATE FUNCTION CHECKING TO REDUCE DELAYS
     def pose_controller(self, target_pose: Pose, reversed: bool=False) -> Twist:
 
         if self.curr_pose is None:
@@ -435,14 +413,12 @@ class RetrieveNode(Node):
         distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
         q_curr = self.curr_pose.pose.orientation
-        _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w, use_extrinsics=True
-        )
+        current_yaw = yaw_from_quaternion(q=q_curr, use_extrinsics=True)
+
         angle_diff = angle_wrap(angle_to_target - current_yaw) if not reversed else angle_wrap(angle_to_target - (current_yaw + np.pi))
         q_desired = target_pose.orientation
-        _, _, desired_yaw = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w, use_extrinsics=True
-        )
+        desired_yaw = yaw_from_quaternion(q=q_desired, use_extrinsics=True)
+
         desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
 
         cmd = Twist()
@@ -468,12 +444,9 @@ class RetrieveNode(Node):
                     )
                 else:
                     reached = True
-                    # TODO: Arguably, this should just change reached and not return, and allow the final statement to take care of that
-                    return Twist(), reached
 
         return cmd, reached
 
-    # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
     def pose_controller_clf(
         self, target_pose: Pose, gamma=0.7, k=1.0, h=0.7, forward_constraint=False
@@ -488,11 +461,9 @@ class RetrieveNode(Node):
         )
         reached = False
         q_curr = self.curr_pose.pose.orientation
-        _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
+        theta = yaw_from_quaternion(q=q_curr, use_extrinsics=True)
         q_desired = target_pose.orientation
-        _, _, desired_theta = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w
-        )
+        desired_theta = yaw_from_quaternion(q=q_desired, use_extrinsics=True)
 
         dx = target_pose.position.x - self.curr_pose.pose.position.x
         dy = target_pose.position.y - self.curr_pose.pose.position.y
@@ -543,13 +514,8 @@ class RetrieveNode(Node):
         cmd.linear.x = v
         cmd.angular.z = w
         curr_pose = self.curr_pose
-        curr_orientation = curr_pose.pose.orientation
-        _, _, curr_ori = euler_from_quaternion(
-            curr_orientation.x,
-            curr_orientation.y,
-            curr_orientation.z,
-            curr_orientation.w,
-        )
+        curr_ori = yaw_from_quaternion(q=curr_pose.pose.orientation, use_extrinsics=True)
+
         curr_position = [
             curr_pose.pose.position.x,
             curr_pose.pose.position.y,
@@ -565,12 +531,16 @@ class RetrieveNode(Node):
         # TODO: Also doublecheck the shapes on these things
         block_positions = deepcopy(self.block_positions)
         neighbor_positions = deepcopy(self.neighbor_positions)
-        safe_cmd = self.barrier_func(
-            cmd,
-            robo_pose,
-            neighbor_positions=neighbor_positions,
-            block_positions=block_positions,
-        )
+        try:
+            safe_cmd = self.barrier_func(
+                cmd,
+                robo_pose,
+                neighbor_positions=neighbor_positions,
+                block_positions=block_positions,
+            )
+        except Exception as e:
+            self.logger.error(f"Barriers are unable to produce a safe velocity: {e}\nStopping robot")
+            return Twist(), False
         return safe_cmd, reached
     
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
