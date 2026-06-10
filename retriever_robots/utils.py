@@ -157,13 +157,13 @@ def uni_to_si_vel(dxu: np.ndarray, pose: np.ndarray, projection_distance: float=
 
 
 def get_robot_barrier_func(
-    safety_radius: float = 0.35,
-    barrier_gain: float = 20.0,
-    magnitude_limit: float = 0.2,
+    safety_radius: float = 0.5,
+    barrier_gain: float = 30.0,
+    magnitude_limit: float = 0.3,
     boundary_points: np.ndarray = None,
     build_area_points: np.ndarray = None,
     block_safety_radius: float = 0.07,
-    projection_dist: float = 0.15,
+    projection_dist: float = 0.45,
 ) -> Callable[[Twist, np.ndarray, np.ndarray, np.ndarray], [Twist]]:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.

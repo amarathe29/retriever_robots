@@ -131,7 +131,7 @@ class RetrieveNode(Node):
         self.valid_tf_tree = False
 
         # TODO: Check the name of the Jackal, also potentially use the tf tree to figure out the boundaries???
-        self.neighbor_list = ["aruco_31", "aruco_15"]
+        self.neighbor_list = ["aruco_31", "aruco_15", "aruco_21"]
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
