@@ -121,7 +121,7 @@ class RetrieveNode(Node):
         self.neighbor_list = ["aruco_31","aruco_15"] 
         # TODO: Check the boundary points and build points that we need to give (I think we hardcode these if possible)
         self.barrier_func = get_robot_barrier_func(
-            boundary_points=[-3.0, 3.0, -5.0, 5.0]
+            boundary_points=[-5.0, 5.0, -5.0, 5.0]
         )
 
     def odom_callback(self, msg: Odometry) -> None:
