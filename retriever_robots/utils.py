@@ -13,7 +13,7 @@ options["feastol"] = 1e-2
 options["maxiters"] = 50
 
 
-def do_transform_transform(t1: TransformStamped, t2: TransformStamped):
+def do_transform_transform(t1: TransformStamped, t2: TransformStamped) -> TransformStamped:
     # given two transforms, produce t1 * t2
     T1 = convert_transform_to_matrix(t1)
     T2 = convert_transform_to_matrix(t2)
@@ -34,7 +34,7 @@ def do_transform_transform(t1: TransformStamped, t2: TransformStamped):
     return result
 
 
-def convert_transform_to_matrix(transform: TransformStamped):
+def convert_transform_to_matrix(transform: TransformStamped) -> np.array:
     T = np.eye(4)
     T[0:3, 0:3] = Rotation.from_quat(
         [
@@ -65,7 +65,7 @@ def euler_from_quaternion(
         "XYZ" if not use_extrinsics else "xyz"
     )
 
-def yaw_from_quaternion(q: Quaternion, use_extrinsics: bool = False):
+def yaw_from_quaternion(q: Quaternion, use_extrinsics: bool = False) -> float:
     _, _, yaw = euler_from_quaternion(x=q.x, y=q.y, z=q.z, w=q.w,  use_extrinsics=use_extrinsics)
     return yaw
 
@@ -131,7 +131,7 @@ def angle_wrap(angle: float) -> float:
     return wrapped
 
 
-def si_to_uni_vel(dxi, pose, projection_distance=0.03):
+def si_to_uni_vel(dxi: np.array, pose: np.array, projection_distance:float=0.03) -> np.array:
     d = projection_distance
     h = float(pose[2].item()) if hasattr(pose[2], "item") else float(pose[2])
     T_inv = np.array([[np.cos(h), np.sin(h)], [-np.sin(h) / d, np.cos(h) / d]])
@@ -141,7 +141,7 @@ def si_to_uni_vel(dxi, pose, projection_distance=0.03):
     return dxu
 
 
-def uni_to_si_vel(dxu, pose, projection_distance=0.05):
+def uni_to_si_vel(dxu: np.array, pose: np.array, projection_distance: float=0.05) -> np.array:
     d = projection_distance
 
     T = np.array([[1, 0], [0, d]])
@@ -159,8 +159,8 @@ def get_robot_barrier_func(
     safety_radius: float = 0.35,
     barrier_gain: float = 20.0,
     magnitude_limit: float = 0.2,
-    boundary_points: np.array = None,
-    build_area_points: np.array = None,
+    boundary_points: np.array | None = None,
+    build_area_points: np.array | None = None,
     block_safety_radius: float = 0.07,
     projection_dist: float = 0.15,
 ) -> callable:
@@ -179,8 +179,8 @@ def get_robot_barrier_func(
     def barrier_func(
         unsafe_cmd: Twist,
         pose: np.array,
-        neighbor_positions: np.array = None,
-        block_positions: np.array = None,
+        neighbor_positions: np.array | None = None,
+        block_positions: np.array | None = None,
     ) -> Twist:
         """_summary_
 
@@ -197,7 +197,7 @@ def get_robot_barrier_func(
             assert neighbor_positions.shape[0] == 2, "Neighbor positions is incorrect shape"
         if block_positions is not None:
             assert block_positions.shape[0] == 2, "Block positions is incorrect shape"
-            
+
         barrier_power = 3
         dxu = np.array([[unsafe_cmd.linear.x], [unsafe_cmd.angular.z]])
         projection_distance = projection_dist

@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer
+from rclpy.action import ActionServer, ServerGoalHandle
 from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Twist, Pose, PoseStamped, Quaternion
@@ -25,6 +25,7 @@ from tf2_geometry_msgs import do_transform_pose_stamped
 
 import numpy as np
 from enum import Enum, auto
+from collections.abc import Callable
 from copy import deepcopy
 
 BLOCK_OFFSET = 0.4  # m
@@ -47,7 +48,7 @@ class State(Enum):
 class RetrieveNode(Node):
     """RetrieveNode runs the state machine for each of the retriever robots."""
 
-    def __init__(self, node_name, *args):
+    def __init__(self, node_name: str, *args) -> None:
         super(RetrieveNode, self).__init__(node_name)
         # Set up subscribers
         self.odom_sub = self.create_subscription(
@@ -133,10 +134,10 @@ class RetrieveNode(Node):
             self._start_pose.pose = self.odom.pose.pose
             self.start_pose_set = True
 
-    def update_odom_state(self, valid_msg: Bool):
+    def update_odom_state(self, valid_msg: Bool) -> None:
         self.valid_tf_tree = valid_msg.data
 
-    def visible_block_callback(self, msg: Pose) -> None:
+    def visible_block_callback(self, msg: PoseStatus) -> None:
 
         self.update_visualization()
 
@@ -180,7 +181,7 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-    def calculate_nav_pose(self, message, stock_pt_safe):
+    def calculate_nav_pose(self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]) -> PoseStamped:
         # given a message that contains both the block pose and the stockpile pose
         block_pose = message.block.pose.pose
 
@@ -212,7 +213,7 @@ class RetrieveNode(Node):
 
         return pose
 
-    def block_callback(self, msg):
+    def block_callback(self, msg: OccupancyGrid) -> None:
         block_arr = np.array(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width)
         origin = msg.info.origin
         resolution = msg.info.resoltion
@@ -221,7 +222,7 @@ class RetrieveNode(Node):
         y_positions = (row_mask * resolution) + origin.position.y
         self.block_positions = np.vstack()
 
-    def save_block_pose(self):
+    def save_block_pose(self) -> PoseStamped:
         block_loc = deepcopy(self.observed_block_pose)
         transform = self.tf_buffer.lookup_transform(
             self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time()
@@ -230,7 +231,7 @@ class RetrieveNode(Node):
         res.pose.orientation = self.curr_pose.pose.orientation
         return res
 
-    def calculate_exit_pose(self):
+    def calculate_exit_pose(self) -> PoseStamped:
         transform = self.tf_buffer.lookup_transform(
             self._namespaced_frame("odom"),
             self._namespaced_frame("base_link"),
@@ -243,7 +244,7 @@ class RetrieveNode(Node):
         return do_transform_pose_stamped(pos, transform)
 
 
-    def stockpile_behavior(self, pose_location: Pose, msg: str, next_state: State):
+    def stockpile_behavior(self, pose_location: PoseStamped, msg: str, next_state: State) -> None:
         reached = self.go_to_pose(pose_location)
         if self.tag_visible and reached:
             self.logger.info(
@@ -254,20 +255,20 @@ class RetrieveNode(Node):
         elif not self.tag_visible:
             self.send_to_recovery()
 
-    def send_to_recovery(self, msg: str = None):
+    def send_to_recovery(self, msg: str | None = None) -> None:
         message = msg if msg is not None else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
         self.logger.info(message)
         self.return_state = State.GRABBING
         self.state = State.RECOVERY
 
-    def create_result(self, success, pose=None):
+    def create_result(self, success: bool, pose: PoseStamped | None = None) -> RetrievalTask.Result:
         result = RetrievalTask.Result()
         result.success = success
         result.delivered = Block()
         result.delivered.pose = pose or PoseStamped()
         return result
 
-    def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
+    def retrieve_callback(self, goal_handle: ServerGoalHandle[RetrievalTask]) -> RetrievalTask.Result:
         """action handler for the retrieve action server"""
 
         self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
@@ -397,7 +398,7 @@ class RetrieveNode(Node):
         result = self.create_result(success=False, pose=self.observed_block_pose)
         return result
 
-    def pose_controller(self, target_pose: Pose, reversed: bool=False) -> Twist:
+    def pose_controller(self, target_pose: Pose, reversed: bool=False) -> tuple[Twist, bool]:
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
@@ -449,8 +450,8 @@ class RetrieveNode(Node):
 
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
     def pose_controller_clf(
-        self, target_pose: Pose, gamma=0.7, k=1.0, h=0.7, forward_constraint=False
-    ) -> Twist:
+        self, target_pose: Pose, gamma: float=0.7, k: float=1.0, h: float=0.7, forward_constraint: bool=False
+    ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
@@ -544,13 +545,13 @@ class RetrieveNode(Node):
         return safe_cmd, reached
     
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
-    def pose_controller_reverse(self, target_pose: Pose) -> Twist:
+    def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller(target_pose=target_pose, reversed=True)
 
-    def pose_controller_clf_constrained(self, target_pose: Pose) -> Twist:
+    def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
     
-    def go_to_pose(self, target_pose: PoseStamped, controller=None) -> bool:
+    def go_to_pose(self, target_pose: PoseStamped, controller: Callable[[Pose], tuple[Twist, bool]] | None = None) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
 
@@ -561,14 +562,14 @@ class RetrieveNode(Node):
         self.vel_pub.publish(cmd)
         return reached
 
-    def brake(self):
+    def brake(self) -> None:
         self.vel_pub.publish(Twist())
 
-    def _namespaced_frame(self, frame_name):
+    def _namespaced_frame(self, frame_name: str) -> str:
         ns = self.get_namespace().strip("/")
         return f"{ns}/{frame_name}" if ns else frame_name
 
-    def update_visualization(self):
+    def update_visualization(self) -> None:
         msg = MarkerArray()
         marker_data = {
             "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
@@ -604,7 +605,7 @@ class RetrieveNode(Node):
 
     # TODO: use the world frame and published aruco tags to update the robots position
     @property
-    def curr_pose(self):
+    def curr_pose(self) -> PoseStamped | None:
         if hasattr(self, "pose") and self.pose is not None:
             self.logger.debug("Using pose topic")
             return self.pose
@@ -621,7 +622,7 @@ class RetrieveNode(Node):
     
     # TODO: Does it make sense to do this as a property? Yes, it does, don't question it
     @property
-    def neighbor_positions(self):
+    def neighbor_positions(self) -> np.array:
         positions = np.zeros((2,len(self.neighbor_list)))
         for ndx, neighbor_frame in enumerate(self.neighbor_list):
             try:
