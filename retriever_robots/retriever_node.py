@@ -1,32 +1,37 @@
-import rclpy
-from rclpy.node import Node
-from rclpy.action import ActionServer
-from rclpy.executors import MultiThreadedExecutor
+from collections.abc import Callable
+from copy import deepcopy
+from enum import Enum, auto
 
-from geometry_msgs.msg import Twist, Pose, PoseStamped, Quaternion
-from visualization_msgs.msg import MarkerArray, Marker
-from nav_msgs.msg import Odometry, OccupancyGrid
-from std_msgs.msg import Bool
+import numpy as np
+import rclpy
+import tf2_ros
 from cc_interfaces.action import RetrievalTask  # type: ignore
 from cc_interfaces.msg import Block  # type: ignore
+from geometry_msgs.msg import (
+    Pose,
+    PoseStamped,
+    Quaternion,
+    Twist,
+    PointStamped,
+    PolygonStamped,
+)
+from nav_msgs.msg import OccupancyGrid, Odometry
+from rclpy.action import ActionServer
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 from retriever_msgs.msg import PoseStatus  # type: ignore
+from std_msgs.msg import Bool
+from tf2_geometry_msgs import do_transform_pose_stamped, do_transform_point
+from visualization_msgs.msg import Marker, MarkerArray
 
 from retriever_robots.utils import (
     angle_wrap,
     euler_from_quaternion,
-    reverse_yaw_quaternion,
-    quaternion_from_euler,
     get_robot_barrier_func,
-    yaw_from_quaternion
+    quaternion_from_euler,
+    reverse_yaw_quaternion,
+    yaw_from_quaternion,
 )
-
-import tf2_ros
-from tf2_geometry_msgs import do_transform_pose_stamped
-
-import numpy as np
-from enum import Enum, auto
-from collections.abc import Callable
-from copy import deepcopy
 
 BLOCK_OFFSET = 0.4  # m
 REVERSE_DISTANCE = 0.4  # m
@@ -71,7 +76,13 @@ class RetrieveNode(Node):
             10,
         )
 
-        self.block_sub = self.create_subscription(OccupancyGrid, "/block_poses", self.block_callback, 10)
+        self.build_area_sub = self.create_subscription(
+            PolygonStamped, "build_polygon", self.build_area_callback, 10
+        )
+
+        self.block_sub = self.create_subscription(
+            OccupancyGrid, "/block_poses", self.block_callback, 10
+        )
 
         # Set up publisher
         self.vel_pub = self.create_publisher(
@@ -97,7 +108,6 @@ class RetrieveNode(Node):
         self.logger = self.get_logger()
         self.logger.info(f"Launched Retrieve Node for {self.get_namespace()}")
 
-
         self.state = State.IDLE
         self.return_state = State.NAVIGATING
         self.pose = None
@@ -112,17 +122,16 @@ class RetrieveNode(Node):
         self.stockpile = None
         self.stockpile_safe = None
         self.recovery_pose = None
+        self.terminus = None
+        self.origin = None
+        self.build_area_points = None
 
         self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
-        
+
         # TODO: Check the name of the Jackal, also potentially use the tf tree to figure out the boundaries???
-        self.neighbor_list = ["aruco_31","aruco_15"] 
-        # TODO: Check the boundary points and build points that we need to give (I think we hardcode these if possible)
-        self.barrier_func = get_robot_barrier_func(
-            boundary_points=[-5.0, 5.0, -5.0, 5.0]
-        )
+        self.neighbor_list = ["aruco_31", "aruco_15"]
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
@@ -180,9 +189,20 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-    def calculate_nav_pose(self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]) -> PoseStamped:
+    def get_odom_transform(self, message):
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"), message.header.frame_id, rclpy.time.Time()
+        )
+        return transform
+
+    def calculate_nav_pose(
+        self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]
+    ) -> PoseStamped:
         # given a message that contains both the block pose and the stockpile pose
-        block_pose = message.block.pose.pose
+        block_pose_stamped = message.block.pose
+        transform = self.get_odom_transform(message.block)
+        block_pose_stamped = do_transform_pose_stamped(block_pose_stamped, transform)
+        block_pose = block_pose_stamped.pose
 
         block_pt = (block_pose.position.x, block_pose.position.y)
 
@@ -213,19 +233,60 @@ class RetrieveNode(Node):
         return pose
 
     def block_callback(self, msg: OccupancyGrid) -> None:
-        block_arr = np.array(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width)
+        block_arr = np.array(msg.data, dtype=np.int8).reshape(
+            msg.info.height, msg.info.width
+        )
         origin = msg.info.origin
-        resolution = msg.info.resoltion
+        resolution = msg.info.resolution
+
+        self.terminus = resolution * np.array([msg.info.width, msg.info.height])
+        self.origin = np.array([origin.position.x, origin.position.y])
+
         row_mask, col_mask = np.where(block_arr > 0)
         x_positions = (col_mask * resolution) + origin.position.x
         y_positions = (row_mask * resolution) + origin.position.y
-        self.block_positions = np.vstack()
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"), "world", rclpy.time.Time()
+        )
+        transformed_x = []
+        transformed_y = []
+        for x, y in (x_positions, y_positions):
+            pt = PointStamped()
+            pt.header.stamp = self.get_clock().now().to_msg()
+            pt.header.frame_id = "world"
+            pt.point.x = x
+            pt.point.y = y
+
+            transformed_pt = do_transform_point(pt, transform)
+
+            transformed_x.append(transformed_pt.point.x)
+            transformed_y.append(transformed_pt.point.y)
+
+        self.block_positions = np.vstack(
+            np.array(transformed_x), np.array(transformed_y)
+        )
+
+    def build_area_callback(self, msg: PolygonStamped):
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"), "world", rclpy.time.Time()
+        )
+        pts = msg.polygon.points
+        pt_arr = []
+        for pt in [pts[0], pts[2]]:
+            pt_0 = PointStamped()
+            pt_0.header.stamp = self.get_clock().now().to_msg()
+            pt_0.header.frame_id = "world"
+            pt_0.point.x = pt.x
+            pt_0.point.y = pt.y
+            pt_transformed = do_transform_point(pt_0, transform)
+            pt_arr.append(pt_transformed)
+
+        self.build_area_points = [pt_arr[0].x, pt_arr[1].x, pt_arr[0].y, pt_arr[1].y]
 
     def save_block_pose(self) -> PoseStamped:
         block_loc = deepcopy(self.observed_block_pose)
-        transform = self.tf_buffer.lookup_transform(
-            self._namespaced_frame("odom"), block_loc.header.frame_id, rclpy.time.Time()
-        )
+        transform = self.get_odom_transform(block_loc)
+
         res = do_transform_pose_stamped(block_loc, transform)
         res.pose.orientation = self.curr_pose.pose.orientation
         return res
@@ -236,31 +297,37 @@ class RetrieveNode(Node):
             self._namespaced_frame("base_link"),
             rclpy.time.Time(),
         )
+
         pos = PoseStamped()
         pos.header.frame_id = self._namespaced_frame("base_link")
         pos.header.stamp = self.get_clock().now().to_msg()
         pos.pose.position.x = -REVERSE_DISTANCE
         return do_transform_pose_stamped(pos, transform)
 
-
-    def stockpile_behavior(self, pose_location: PoseStamped, msg: str, next_state: State) -> None:
+    def stockpile_behavior(
+        self, pose_location: PoseStamped, msg: str, next_state: State
+    ) -> None:
         reached = self.go_to_pose(pose_location)
         if self.tag_visible and reached:
-            self.logger.info(
-                f"[{self.state.name}]{msg}"
-            )
+            self.logger.info(f"[{self.state.name}]{msg}")
             self.exit_pose = self.calculate_exit_pose()
             self.state = next_state
         elif not self.tag_visible:
             self.send_to_recovery()
 
     def send_to_recovery(self, msg: str = None) -> None:
-        message = msg if msg is not None else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
+        message = (
+            msg
+            if msg is not None
+            else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
+        )
         self.logger.info(message)
         self.return_state = State.GRABBING
         self.state = State.RECOVERY
 
-    def create_result(self, success: bool, pose: PoseStamped = None) -> RetrievalTask.Result:
+    def create_result(
+        self, success: bool, pose: PoseStamped = None
+    ) -> RetrievalTask.Result:
         result = RetrievalTask.Result()
         result.success = success
         result.delivered = Block()
@@ -289,7 +356,8 @@ class RetrieveNode(Node):
             if self.state == State.IDLE:
                 stockpile_points = goal_handle.request.stockpile.polygon.points
                 stock_pt = np.mean([(pt.x, pt.y) for pt in stockpile_points], axis=0)
-                stock_pt_safe = (stock_pt[0] + STOCK_CLEARANCE, stock_pt[1])
+                stock_pt_safe = (stock_pt[0] - STOCK_CLEARANCE, stock_pt[1])
+
                 self.stockpile = PoseStamped()
                 self.stockpile.header = goal_handle.request.stockpile.header
                 self.stockpile.pose.position.x = stock_pt[0]
@@ -302,6 +370,15 @@ class RetrieveNode(Node):
                 self.stockpile_safe.pose.position.x = stock_pt_safe[0]
                 self.stockpile_safe.pose.position.y = stock_pt_safe[1]
 
+                transform_stockpile = self.get_odom_transform(self.stockpile)
+
+                self.stockpile = do_transform_pose_stamped(
+                    self.stockpile, transform_stockpile
+                )
+                self.stockpile_safe = do_transform_pose_stamped(
+                    self.stockpile_safe, transform_stockpile
+                )
+
                 self.nav_pose = self.calculate_nav_pose(
                     goal_handle.request, stock_pt_safe
                 )
@@ -311,6 +388,7 @@ class RetrieveNode(Node):
                 self.logger.info(
                     f"Received retrieve action goal: {self.nav_pose}, entering NAVIGATING state"
                 )
+                self.init_barriers()
                 self.state = State.NAVIGATING
 
             elif self.state == State.NAVIGATING:
@@ -323,7 +401,9 @@ class RetrieveNode(Node):
                     self.state = State.GRABBING
 
                 elif reached and not self.tag_visible:
-                    self.send_to_recovery(msg=f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery")
+                    self.send_to_recovery(
+                        msg=f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
+                    )
 
             elif self.state == State.GRABBING:
                 # super naive, we should check for block in position here
@@ -344,11 +424,19 @@ class RetrieveNode(Node):
 
             elif self.state == State.STOCKPILE_PREP:
                 # move to a safe stockpiling location
-                self.stockpile_behavior(pose_location=self.stockpile_safe, msg="Reached Safe Stockpile Point, attempting DEPOSIT", next_state=State.STOCKPILE_DEPOSIT)
+                self.stockpile_behavior(
+                    pose_location=self.stockpile_safe,
+                    msg="Reached Safe Stockpile Point, attempting DEPOSIT",
+                    next_state=State.STOCKPILE_DEPOSIT,
+                )
 
             elif self.state == State.STOCKPILE_DEPOSIT:
                 # move to the specific stockpile location
-                self.stockpile_behavior(pose_location=self.stockpile, msg="Stockpiled block, attempting to EXIT the STOCKPILE", next_state=State.STOCKPILE_EXIT)
+                self.stockpile_behavior(
+                    pose_location=self.stockpile,
+                    msg="Stockpiled block, attempting to EXIT the STOCKPILE",
+                    next_state=State.STOCKPILE_EXIT,
+                )
 
             elif self.state == State.STOCKPILE_EXIT:
                 back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
@@ -377,7 +465,9 @@ class RetrieveNode(Node):
                             f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
                         )
                         goal_handle.succeed()
-                        result = self.create_result(success=True, pose=self.observed_block_pose)
+                        result = self.create_result(
+                            success=True, pose=self.observed_block_pose
+                        )
                         self.state = State.IDLE
                         return result
 
@@ -397,7 +487,9 @@ class RetrieveNode(Node):
         result = self.create_result(success=False, pose=self.observed_block_pose)
         return result
 
-    def pose_controller(self, target_pose: Pose, reversed: bool=False) -> tuple[Twist, bool]:
+    def pose_controller(
+        self, target_pose: Pose, reversed: bool = False
+    ) -> tuple[Twist, bool]:
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
@@ -415,7 +507,11 @@ class RetrieveNode(Node):
         q_curr = self.curr_pose.pose.orientation
         current_yaw = yaw_from_quaternion(q=q_curr, use_extrinsics=True)
 
-        angle_diff = angle_wrap(angle_to_target - current_yaw) if not reversed else angle_wrap(angle_to_target - (current_yaw + np.pi))
+        angle_diff = (
+            angle_wrap(angle_to_target - current_yaw)
+            if not reversed
+            else angle_wrap(angle_to_target - (current_yaw + np.pi))
+        )
         q_desired = target_pose.orientation
         desired_yaw = yaw_from_quaternion(q=q_desired, use_extrinsics=True)
 
@@ -449,7 +545,12 @@ class RetrieveNode(Node):
 
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
     def pose_controller_clf(
-        self, target_pose: Pose, gamma: float=0.7, k: float=1.0, h: float=0.7, forward_constraint: bool=False
+        self,
+        target_pose: Pose,
+        gamma: float = 0.7,
+        k: float = 1.0,
+        h: float = 0.7,
+        forward_constraint: bool = False,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
@@ -514,7 +615,9 @@ class RetrieveNode(Node):
         cmd.linear.x = v
         cmd.angular.z = w
         curr_pose = self.curr_pose
-        curr_ori = yaw_from_quaternion(q=curr_pose.pose.orientation, use_extrinsics=True)
+        curr_ori = yaw_from_quaternion(
+            q=curr_pose.pose.orientation, use_extrinsics=True
+        )
 
         curr_position = [
             curr_pose.pose.position.x,
@@ -539,18 +642,24 @@ class RetrieveNode(Node):
                 block_positions=block_positions,
             )
         except Exception as e:
-            self.logger.error(f"Barriers are unable to produce a safe velocity: {e}\nStopping robot")
+            self.logger.error(
+                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+            )
             return Twist(), False
         return safe_cmd, reached
-    
+
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller(target_pose=target_pose, reversed=True)
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
-    
-    def go_to_pose(self, target_pose: PoseStamped, controller: Callable[[Pose], tuple[Twist, bool]] = None) -> bool:
+
+    def go_to_pose(
+        self,
+        target_pose: PoseStamped,
+        controller: Callable[[Pose], tuple[Twist, bool]] = None,
+    ) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
 
@@ -601,6 +710,41 @@ class RetrieveNode(Node):
 
         self.vis_pub.publish(msg)
 
+    def init_barriers(self):
+        if self.terminus is not None and self.origin is not None:
+            transform = self.tf_buffer.lookup_transform(
+                self._namespaced_frame("odom"), "world", rclpy.time.Time()
+            )
+            origin_pt = PointStamped()
+            origin_pt.header.stamp = self.get_clock().now().to_msg()
+            origin_pt.header.frame_id = "world"
+            origin_pt.point.x = self.origin[0]
+            origin_pt.point.y = self.origin[1]
+
+            terminus_pt = PointStamped()
+            terminus_pt.header.stamp = origin_pt.header.stamp
+            terminus_pt.header.frame_id = "world"
+            terminus_pt.point.x = self.terminus[0]
+            terminus_pt.point.y = self.terminus[1]
+
+            origin_pt_fixed = do_transform_point(origin_pt, transform)
+            terminus_pt_fixed = do_transform_point(terminus_pt, transform)
+
+            self.barrier_func = get_robot_barrier_func(
+                boundary_points=[
+                    origin_pt_fixed.point.x,
+                    terminus_pt_fixed.point.x,
+                    origin_pt_fixed.point.y,
+                    terminus_pt_fixed.point.y,
+                ],
+                build_area_points=self.build_area_points,
+            )
+        else:
+            self.logger.warning("Barriers initialized with fixed values")
+            self.barrier_func = get_robot_barrier_func(
+                boundary_points=[-5.0, 5.0, -5.0, 5.0],
+                build_area_points=[-6, -5.5, -6, -5.5],
+            )
 
     # TODO: use the world frame and published aruco tags to update the robots position
     @property
@@ -618,14 +762,16 @@ class RetrieveNode(Node):
         else:
             self.logger.warning("No pose information available")
             return None
-    
+
     # TODO: Does it make sense to do this as a property? Yes, it does, don't question it
     @property
-    def neighbor_positions(self) -> np.array:
-        positions = np.zeros((2,len(self.neighbor_list)))
+    def neighbor_positions(self) -> np.ndarray:
+        positions = np.zeros((2, len(self.neighbor_list)))
         for ndx, neighbor_frame in enumerate(self.neighbor_list):
             try:
-                transform = self.tf_buffer.lookup_transform(self._namespaced_frame("odom"), neighbor_frame, rclpy.time.Time())
+                transform = self.tf_buffer.lookup_transform(
+                    self._namespaced_frame("odom"), neighbor_frame, rclpy.time.Time()
+                )
                 positions[0, ndx] = transform.transform.translation.x
                 positions[1, ndx] = transform.transform.translation.y
             except Exception as e:
@@ -633,6 +779,7 @@ class RetrieveNode(Node):
                 positions[0, ndx] = 0
                 positions[1, ndx] = 0
         return positions
+
 
 def main():
     rclpy.init()

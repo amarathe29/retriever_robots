@@ -1,11 +1,12 @@
 import math
-import numpy as np
+from collections.abc import Callable
 
-from scipy.spatial.transform import Rotation
-from geometry_msgs.msg import Quaternion, Twist, TransformStamped
-from cvxopt import matrix, sparse # type: ignore
-from cvxopt.solvers import qp, options # type: ignore
+import numpy as np
+from cvxopt import matrix, sparse  # type: ignore
+from cvxopt.solvers import options, qp  # type: ignore
+from geometry_msgs.msg import Quaternion, TransformStamped, Twist
 from rclpy.logging import get_logger
+from scipy.spatial.transform import Rotation
 
 options["show_progress"] = False
 options["reltol"] = 1e-2
@@ -34,7 +35,7 @@ def do_transform_transform(t1: TransformStamped, t2: TransformStamped) -> Transf
     return result
 
 
-def convert_transform_to_matrix(transform: TransformStamped) -> np.array:
+def convert_transform_to_matrix(transform: TransformStamped) -> np.ndarray:
     T = np.eye(4)
     T[0:3, 0:3] = Rotation.from_quat(
         [
@@ -114,7 +115,7 @@ def quaternion_from_euler(
 
 def create_rotation_matrix(
     roll: float = 0, pitch: float = 0, yaw: float = 0, units: str = "radians"
-) -> np.array:
+) -> np.ndarray:
     """
     Creates a rotation matrix from roll, pitch, and yaw angles.
     """
@@ -131,7 +132,7 @@ def angle_wrap(angle: float) -> float:
     return wrapped
 
 
-def si_to_uni_vel(dxi: np.array, pose: np.array, projection_distance:float=0.03) -> np.array:
+def si_to_uni_vel(dxi: np.ndarray, pose: np.ndarray, projection_distance:float=0.03) -> np.ndarray:
     d = projection_distance
     h = float(pose[2].item()) if hasattr(pose[2], "item") else float(pose[2])
     T_inv = np.array([[np.cos(h), np.sin(h)], [-np.sin(h) / d, np.cos(h) / d]])
@@ -141,7 +142,7 @@ def si_to_uni_vel(dxi: np.array, pose: np.array, projection_distance:float=0.03)
     return dxu
 
 
-def uni_to_si_vel(dxu: np.array, pose: np.array, projection_distance: float=0.05) -> np.array:
+def uni_to_si_vel(dxu: np.ndarray, pose: np.ndarray, projection_distance: float=0.05) -> np.ndarray:
     d = projection_distance
 
     T = np.array([[1, 0], [0, d]])
@@ -159,11 +160,11 @@ def get_robot_barrier_func(
     safety_radius: float = 0.35,
     barrier_gain: float = 20.0,
     magnitude_limit: float = 0.2,
-    boundary_points: np.array = None,
-    build_area_points: np.array = None,
+    boundary_points: np.ndarray = None,
+    build_area_points: np.ndarray = None,
     block_safety_radius: float = 0.07,
     projection_dist: float = 0.15,
-) -> callable:
+) -> Callable[[Twist, np.ndarray, np.ndarray, np.ndarray], [Twist]]:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.
 
@@ -178,9 +179,9 @@ def get_robot_barrier_func(
 
     def barrier_func(
         unsafe_cmd: Twist,
-        pose: np.array,
-        neighbor_positions: np.array = None,
-        block_positions: np.array = None,
+        pose: np.ndarray,
+        neighbor_positions: np.ndarray = None,
+        block_positions: np.ndarray = None,
     ) -> Twist:
         """_summary_
 
