@@ -704,7 +704,7 @@ class RetrieveNode(Node):
             zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
             transposed_block_positions = np.hstack((transposed_block_positions, zeros_col))
             header = Header()
-            header.frame_id = "world"
+            header.frame_id = self._namespaced_frame('odom')
             header.stamp = rclpy.clock.Clock().now().to_msg() # Adjust to your node's clock if inside a class
 
             cloud_msg = point_cloud2.create_cloud_xyz32(header, transposed_block_positions.astype(np.float32))
