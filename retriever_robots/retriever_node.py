@@ -478,7 +478,7 @@ class RetrieveNode(Node):
                     pose_location=self.stockpile_safe_safe,
                     msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
                     next_state=State.STOCKPILE_PREP,
-                    controller=self.pose_controller_clf_free,
+                    controller=self.pose_controller_clf_free_constrained,
                 )
 
             elif self.state == State.STOCKPILE_PREP:
@@ -487,7 +487,7 @@ class RetrieveNode(Node):
                     pose_location=self.stockpile_safe,
                     msg="Reached Safe Stockpile Point, attempting DEPOSIT",
                     next_state=State.STOCKPILE_DEPOSIT,
-                    controller=self.pose_controller_clf_free,
+                    controller=self.pose_controller_clf_free_constrained,
                 )
 
             elif self.state == State.STOCKPILE_DEPOSIT:
@@ -772,6 +772,13 @@ class RetrieveNode(Node):
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
+
+    def pose_controller_clf_free_constrained(
+        self, target_pose: Pose
+    ) -> tuple[Twist, bool]:
+        return self.pose_controller_clf(
+            target_pose, forward_constraint=True, enable_barriers=False
+        )
 
     def go_to_pose(
         self,
