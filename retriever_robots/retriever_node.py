@@ -667,7 +667,7 @@ class RetrieveNode(Node):
                 f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
             )
             return Twist(), False
-        return safe_cmd, reached
+        return cmd, reached
 
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
