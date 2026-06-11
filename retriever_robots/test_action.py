@@ -71,8 +71,8 @@ class RetrieverActionTestNode(Node):
 
 def main():
     rclpy.init()
-    point = [4.0, 2.0, 0.0]
-    stockpile = 1 * np.ones((4, 2))
+    point = [1.5, 3.0, 0.0]
+    stockpile = np.array([[0.9, 1.25]*4])
     node = RetrieverActionTestNode()
     quat = quaternion_from_euler(yaw=45, units="degrees")
     print(f"Going to point {point}")

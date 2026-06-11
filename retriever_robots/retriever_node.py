@@ -724,7 +724,6 @@ class RetrieveNode(Node):
         target_pose: PoseStamped,
         controller: Callable[[Pose], tuple[Twist, bool]] = None,
     ) -> bool:
-        return False
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
         if controller is None:
             controller = self.pose_controller_clf
