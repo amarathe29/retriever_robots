@@ -158,7 +158,7 @@ def uni_to_si_vel(dxu: np.ndarray, pose: np.ndarray, projection_distance: float=
 
 def get_robot_barrier_func(
     safety_radius: float = 0.5,
-    barrier_gain: float = 30.0,
+    barrier_gain: float = 20.0,
     magnitude_limit: float = 0.3,
     boundary_points: np.ndarray = None,
     build_area_points: np.ndarray = None,
