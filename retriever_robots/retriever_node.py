@@ -237,6 +237,7 @@ class RetrieveNode(Node):
         self.test_pose = pose
 
         transform = self.odom_transform(self._namespaced_frame("odom"), pose.header.frame_id)
+        self.logger.error(f"TRANSSSSFORM: {transform}")
         pose = do_transform_pose_stamped(pose, transform)
 
         return pose
@@ -719,6 +720,7 @@ class RetrieveNode(Node):
         target_pose: PoseStamped,
         controller: Callable[[Pose], tuple[Twist, bool]] = None,
     ) -> bool:
+
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
         if controller is None:
             controller = self.pose_controller_clf
