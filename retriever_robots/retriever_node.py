@@ -267,7 +267,7 @@ class RetrieveNode(Node):
                 transformed_y.append(transformed_pt.point.y)
 
             self.block_positions = np.vstack(
-                np.array(transformed_x), np.array(transformed_y)
+                (transformed_x, transformed_y)
             )
         except Exception as e:
             self.logger.warn(f"Failed to find the block positions:\n {e}", throttle_duration_sec=5.0)
