@@ -403,7 +403,7 @@ class RetrieveNode(Node):
                     self.odom_transform(self._namespaced_frame("odom"), 'world')
                 except Exception:
                     self.logger.info(f"Some frame does not exist, waiting for it to exist")
-                    return
+                    continue
 
                 transform_stockpile = self.odom_transform(self._namespaced_frame("odom"), self.stockpile.header.frame_id)
 
