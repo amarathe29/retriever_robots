@@ -16,11 +16,13 @@ from geometry_msgs.msg import (
     PolygonStamped,
 )
 from nav_msgs.msg import OccupancyGrid, Odometry
+from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs_py import point_cloud2
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from retriever_msgs.msg import PoseStatus  # type: ignore
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Header
 from tf2_geometry_msgs import do_transform_pose_stamped, do_transform_point
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -91,6 +93,9 @@ class RetrieveNode(Node):
 
         self.vis_pub = self.create_publisher(
             MarkerArray, f"{self.get_namespace()}/markers", 10
+        )
+        self.pc_pub = self.create_publisher(
+            PointCloud2, f"{self.get_namespace()}/detected_obs", 10
         )
 
         # Set up action server
@@ -694,6 +699,18 @@ class RetrieveNode(Node):
         return f"{ns}/{frame_name}" if ns else frame_name
 
     def update_visualization(self) -> None:
+        if hasattr(self, "block_positions") and self.block_positions:
+            transposed_block_positions = self.block_positions.T
+            zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
+            transposed_block_positions = np.hstack((transposed_block_positions, zeros_col))
+            header = Header()
+            header.frame_id = "world"
+            header.stamp = rclpy.clock.Clock().now().to_msg() # Adjust to your node's clock if inside a class
+
+            cloud_msg = point_cloud2.create_cloud_xyz32(header, transposed_block_positions.astype(np.float32))
+            self.pc_pub.publish(cloud_msg)
+
+
         msg = MarkerArray()
         marker_data = {
             "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
