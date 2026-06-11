@@ -254,7 +254,7 @@ class RetrieveNode(Node):
             )
             transformed_x = []
             transformed_y = []
-            for x, y in (x_positions, y_positions):
+            for x, y in zip(x_positions, y_positions):
                 pt = PointStamped()
                 pt.header.stamp = self.get_clock().now().to_msg()
                 pt.header.frame_id = "world"
