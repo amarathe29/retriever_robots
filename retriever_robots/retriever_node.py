@@ -855,14 +855,14 @@ class RetrieveNode(Node):
             origin_pt = PointStamped()
             origin_pt.header.stamp = self.get_clock().now().to_msg()
             origin_pt.header.frame_id = "world"
-            origin_pt.point.x = self.origin[0]
-            origin_pt.point.y = self.origin[1]
+            origin_pt.point.x = self.origin[0] - 1
+            origin_pt.point.y = self.origin[1] - 1
 
             terminus_pt = PointStamped()
             terminus_pt.header.stamp = origin_pt.header.stamp
             terminus_pt.header.frame_id = "world"
-            terminus_pt.point.x = self.terminus[0]
-            terminus_pt.point.y = self.terminus[1]
+            terminus_pt.point.x = self.terminus[0] + 1
+            terminus_pt.point.y = self.terminus[1] + 1
 
             origin_pt_fixed = do_transform_point(origin_pt, transform)
             terminus_pt_fixed = do_transform_point(terminus_pt, transform)
@@ -876,7 +876,7 @@ class RetrieveNode(Node):
                 f"Initializing barriers with boundaries: {boundary_points}\n Build area points are {self.build_area_points}"
             )
             self.logger.info(f"Currently located at {self.curr_pose}")
-            boundary_points = None
+            # boundary_points = None
             self.barrier_func = get_robot_barrier_func(
                 boundary_points=boundary_points,
                 build_area_points=self.build_area_points,
