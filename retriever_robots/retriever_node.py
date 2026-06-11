@@ -90,7 +90,10 @@ class RetrieveNode(Node):
         )
 
         self.tf_sub = self.create_subscription(
-            TransformStamped, f"{self.get_namespace()}/odom_transform", self.odom_transform_cb, 10
+            TransformStamped,
+            f"{self.get_namespace()}/odom_transform",
+            self.odom_transform_cb,
+            10,
         )
 
         # Set up publisher
@@ -138,7 +141,7 @@ class RetrieveNode(Node):
         self.origin = None
         self.build_area_points = None
 
-        self.test_pose = None # debug
+        self.test_pose = None  # debug
 
         self.missing_tag_count = 0
         self.tag_visible = False
@@ -204,7 +207,6 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-
     def calculate_nav_pose(
         self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]
     ) -> PoseStamped:
@@ -241,7 +243,9 @@ class RetrieveNode(Node):
 
         self.test_pose = pose
 
-        transform = self.odom_transform(self._namespaced_frame("odom"), pose.header.frame_id)
+        transform = self.odom_transform(
+            self._namespaced_frame("odom"), pose.header.frame_id
+        )
         self.logger.error(f"TRANSSSSFORM: {transform}", throttle_duration_sec=1.0)
         pose = do_transform_pose_stamped(pose, transform)
 
@@ -262,9 +266,7 @@ class RetrieveNode(Node):
         y_positions = (row_mask * resolution) + origin.position.y
 
         try:
-            transform = self.odom_transform(
-                self._namespaced_frame("odom"), "world"
-            )
+            transform = self.odom_transform(self._namespaced_frame("odom"), "world")
             transformed_x = []
             transformed_y = []
             for x, y in zip(x_positions, y_positions):
@@ -279,19 +281,16 @@ class RetrieveNode(Node):
                 transformed_x.append(transformed_pt.point.x)
                 transformed_y.append(transformed_pt.point.y)
 
-            self.block_positions = np.vstack(
-                (transformed_x, transformed_y)
-            )
+            self.block_positions = np.vstack((transformed_x, transformed_y))
         except Exception as e:
-            self.logger.warn(f"Failed to find the block positions:\n {e}", throttle_duration_sec=5.0)
-            
+            self.logger.warn(
+                f"Failed to find the block positions:\n {e}", throttle_duration_sec=5.0
+            )
+
             return
 
-
     def build_area_callback(self, msg: PolygonStamped):
-        transform = self.odom_transform(
-            self._namespaced_frame("odom"), "world"
-        )
+        transform = self.odom_transform(self._namespaced_frame("odom"), "world")
         pts = msg.polygon.points
         pt_arr = []
         for pt in [pts[0], pts[2]]:
@@ -307,7 +306,9 @@ class RetrieveNode(Node):
 
     def save_block_pose(self) -> PoseStamped:
         block_loc = deepcopy(self.observed_block_pose)
-        transform = self.odom_transform(self._namespaced_frame("odom"), block_loc.header.frame_id)
+        transform = self.odom_transform(
+            self._namespaced_frame("odom"), block_loc.header.frame_id
+        )
 
         res = do_transform_pose_stamped(block_loc, transform)
         res.pose.orientation = self.curr_pose.pose.orientation
@@ -327,7 +328,11 @@ class RetrieveNode(Node):
         return do_transform_pose_stamped(pos, transform)
 
     def stockpile_behavior(
-        self, pose_location: PoseStamped, msg: str, next_state: State, controller: Callable = None
+        self,
+        pose_location: PoseStamped,
+        msg: str,
+        next_state: State,
+        controller: Callable = None,
     ) -> None:
         reached = self.go_to_pose(pose_location, controller=controller)
         if self.tag_visible and reached:
@@ -380,9 +385,7 @@ class RetrieveNode(Node):
                 stock_pt = np.mean([(pt.x, pt.y) for pt in stockpile_points], axis=0)
                 stock_pt_safe = (stock_pt[0] - STOCK_CLEARANCE, stock_pt[1])
 
-                stock_pile_quat = quaternion_from_euler(
-                    yaw=0, units="degrees"
-                )
+                stock_pile_quat = quaternion_from_euler(yaw=0, units="degrees")
 
                 self.stockpile = PoseStamped()
                 self.stockpile.header = goal_handle.request.stockpile.header
@@ -405,12 +408,16 @@ class RetrieveNode(Node):
                 )
 
                 try:
-                    self.odom_transform(self._namespaced_frame("odom"), 'world')
+                    self.odom_transform(self._namespaced_frame("odom"), "world")
                 except Exception:
-                    self.logger.info(f"Some frame does not exist, waiting for it to exist")
+                    self.logger.info(
+                        f"Some frame does not exist, waiting for it to exist"
+                    )
                     continue
 
-                transform_stockpile = self.odom_transform(self._namespaced_frame("odom"), self.stockpile.header.frame_id)
+                transform_stockpile = self.odom_transform(
+                    self._namespaced_frame("odom"), self.stockpile.header.frame_id
+                )
 
                 self.stockpile = do_transform_pose_stamped(
                     self.stockpile, transform_stockpile
@@ -421,7 +428,6 @@ class RetrieveNode(Node):
                 self.stockpile_safe_safe = do_transform_pose_stamped(
                     self.stockpile_safe_safe, transform_stockpile
                 )
-        
 
                 self.nav_pose = self.calculate_nav_pose(
                     goal_handle.request, stock_pt_safe
@@ -473,7 +479,6 @@ class RetrieveNode(Node):
                     msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
                     next_state=State.STOCKPILE_PREP,
                 )
-
 
             elif self.state == State.STOCKPILE_PREP:
                 # move to a safe stockpiling location
@@ -618,6 +623,7 @@ class RetrieveNode(Node):
         k: float = 1.0,
         h: float = 0.6,
         forward_constraint: bool = False,
+        enable_barriers: bool = True,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
@@ -681,7 +687,7 @@ class RetrieveNode(Node):
         v = np.sign(v) * max(v_min, np.abs(v))
         w = np.sign(w) * max(w_min, np.abs(w))
 
-        if e < 0.025:
+        if e < 0.07:
             self.logger.info("Position error low", throttle_duration_sec=1.0)
             if alpha < 0.05:
                 self.logger.info("Angular error low", throttle_duration_sec=1.0)
@@ -711,36 +717,55 @@ class RetrieveNode(Node):
         block_positions = deepcopy(self.block_positions)
         neighbor_positions = deepcopy(self.neighbor_positions)
 
-        if self.state in [State.GRABBING, State.STOCKPILE_PREP_PREP, State.STOCKPILE_PREP, State.STOCKPILE_DEPOSIT]:
-            robot_x, robot_y, yaw = self.curr_pose.pose.position.x, self.curr_pose.pose.position.y, yaw_from_quaternion(self.curr_pose.pose.orientation)
+        if self.state in [
+            State.GRABBING,
+            State.STOCKPILE_PREP_PREP,
+            State.STOCKPILE_PREP,
+            State.STOCKPILE_DEPOSIT,
+        ]:
+            robot_x, robot_y, yaw = (
+                self.curr_pose.pose.position.x,
+                self.curr_pose.pose.position.y,
+                yaw_from_quaternion(self.curr_pose.pose.orientation),
+            )
             d = 0.15
-            block_ignore_x, block_ignore_y = robot_x + d*np.cos(yaw), robot_y + d*np.sin(yaw)
-            point = np.array([[block_ignore_x],[block_ignore_y]])
-            dists = np.linalg.norm(block_positions - point, axis=0).reshape((1,-1))
+            block_ignore_x, block_ignore_y = robot_x + d * np.cos(
+                yaw
+            ), robot_y + d * np.sin(yaw)
+            point = np.array([[block_ignore_x], [block_ignore_y]])
+            dists = np.linalg.norm(block_positions - point, axis=0).reshape((1, -1))
             self.logger.info(f"DISTS ({dists.shape})")
             mask = dists > 0.25
-            mask = np.vstack((mask,mask))
+            mask = np.vstack((mask, mask))
             removed = block_positions[~mask]
-            self.logger.info(f"Removed ({mask.shape}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
-            block_positions = block_positions[mask].reshape((2,-1))
+            self.logger.info(
+                f"Removed ({mask.shape}) the following blocks from barriers: {removed}",
+                throttle_duration_sec=2,
+            )
+            block_positions = block_positions[mask].reshape((2, -1))
+        if enable_barriers:
+            try:
+                safe_cmd = self.barrier_func(
+                    cmd,
+                    robo_pose,
+                    neighbor_positions=neighbor_positions,
+                    block_positions=block_positions,
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+                )
+                return Twist(), False
+            return safe_cmd, reached
 
-        try:
-            safe_cmd = self.barrier_func(
-                cmd,
-                robo_pose,
-                neighbor_positions=neighbor_positions,
-                block_positions=block_positions,
-            )
-        except Exception as e:
-            self.logger.error(
-                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
-            )
-            return Twist(), False
-        return safe_cmd, reached
+        return cmd, reached
 
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller(target_pose=target_pose, reversed=True)
+
+    def pose_controller_clf_free(self, target_pose: Pose) -> tuple[Twist, bool]:
+        return self.pose_controller_clf(target_pose, enable_barriers=False)
 
     def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
         return self.pose_controller_clf(target_pose, forward_constraint=True)
@@ -767,27 +792,34 @@ class RetrieveNode(Node):
         return f"{ns}/{frame_name}" if ns else frame_name
 
     def update_visualization(self) -> None:
-        if False: #hasattr(self, "block_positions") and self.block_positions is not None:
+        if (
+            False
+        ):  # hasattr(self, "block_positions") and self.block_positions is not None:
             transposed_block_positions = self.block_positions.T
             zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
-            transposed_block_positions = np.hstack((transposed_block_positions, zeros_col))
+            transposed_block_positions = np.hstack(
+                (transposed_block_positions, zeros_col)
+            )
             header = Header()
-            header.frame_id = self._namespaced_frame('odom')
-            header.stamp = rclpy.clock.Clock().now().to_msg() # Adjust to your node's clock if inside a class
+            header.frame_id = self._namespaced_frame("odom")
+            header.stamp = (
+                rclpy.clock.Clock().now().to_msg()
+            )  # Adjust to your node's clock if inside a class
 
-            cloud_msg = point_cloud2.create_cloud_xyz32(header, transposed_block_positions.astype(np.float32))
+            cloud_msg = point_cloud2.create_cloud_xyz32(
+                header, transposed_block_positions.astype(np.float32)
+            )
             self.pc_pub.publish(cloud_msg)
-
 
         msg = MarkerArray()
         marker_data = {
             "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
             "observed_block": (self.observed_block_pose, (1.0, 0.0, 0.0)),
-            "test_pose": (self.test_pose, (1.0,0.0,1.0)),
+            "test_pose": (self.test_pose, (1.0, 0.0, 1.0)),
             "nav_pose": (self.nav_pose, (0.0, 1.0, 1.0)),
             "stockpile_pose": (self.stockpile, (0.0, 1.0, 0.0)),
             "stockpile_safe_pose": (self.stockpile_safe, (0.0, 0.0, 1.0)),
-            "stockpile_safe_safe_pose": (self.stockpile_safe_safe, (1.0, 0.5, 0.0))
+            "stockpile_safe_safe_pose": (self.stockpile_safe_safe, (1.0, 0.5, 0.0)),
         }
 
         for i, nary in enumerate(marker_data.items()):
@@ -815,10 +847,8 @@ class RetrieveNode(Node):
 
     def init_barriers(self):
         if self.terminus is not None and self.origin is not None:
-            
-            transform = self.odom_transform(
-                self._namespaced_frame("odom"), "world"
-            )
+
+            transform = self.odom_transform(self._namespaced_frame("odom"), "world")
             origin_pt = PointStamped()
             origin_pt.header.stamp = self.get_clock().now().to_msg()
             origin_pt.header.frame_id = "world"
@@ -833,16 +863,19 @@ class RetrieveNode(Node):
 
             origin_pt_fixed = do_transform_point(origin_pt, transform)
             terminus_pt_fixed = do_transform_point(terminus_pt, transform)
-            boundary_points=[
-                    origin_pt_fixed.point.x,
-                    terminus_pt_fixed.point.x,
-                    origin_pt_fixed.point.y,
-                    terminus_pt_fixed.point.y,
-                ]
-            self.logger.info(f"Initializing barriers with boundaries: {boundary_points}\n Build area points are {self.build_area_points}")
+            boundary_points = [
+                origin_pt_fixed.point.x,
+                terminus_pt_fixed.point.x,
+                origin_pt_fixed.point.y,
+                terminus_pt_fixed.point.y,
+            ]
+            self.logger.info(
+                f"Initializing barriers with boundaries: {boundary_points}\n Build area points are {self.build_area_points}"
+            )
             self.logger.info(f"Currently located at {self.curr_pose}")
             boundary_points = None
-            self.barrier_func = get_robot_barrier_func(boundary_points=boundary_points,
+            self.barrier_func = get_robot_barrier_func(
+                boundary_points=boundary_points,
                 build_area_points=self.build_area_points,
             )
         else:
@@ -853,7 +886,7 @@ class RetrieveNode(Node):
             )
 
     def odom_transform_cb(self, trans):
-        if hasattr(self, 'transform'):
+        if hasattr(self, "transform"):
             if "world" not in self.transform:
                 self.transform["world"] = {}
             self.transform["world"]["odom"] = trans
@@ -861,7 +894,7 @@ class RetrieveNode(Node):
             self.transform = {}
 
     def odom_transform(self, target, source):
-        if hasattr(self, 'transform'):
+        if hasattr(self, "transform"):
             if source in self.transform.keys():
                 if target in self.transform[source].keys():
                     return self.transform[source][target]
@@ -872,15 +905,15 @@ class RetrieveNode(Node):
             else:
                 self.transform[source] = {}
                 self.transform[source][target] = self.tf_buffer.lookup_transform(
-                        target, source, rclpy.time.Time()
-                    )
+                    target, source, rclpy.time.Time()
+                )
         else:
             self.transform = {}
             self.transform[source] = {}
             self.transform[source][target] = self.tf_buffer.lookup_transform(
-                    target, source, rclpy.time.Time()
-                )
-                
+                target, source, rclpy.time.Time()
+            )
+
         return self.transform[source][target]
 
     # TODO: use the world frame and published aruco tags to update the robots position
@@ -908,7 +941,10 @@ class RetrieveNode(Node):
                 positions[0, ndx] = transform.transform.translation.x
                 positions[1, ndx] = transform.transform.translation.y
             except Exception as e:
-                self.logger.error(f"Could not compute neighbor transform: {e}", throttle_duration_sec=5.0)
+                self.logger.error(
+                    f"Could not compute neighbor transform: {e}",
+                    throttle_duration_sec=5.0,
+                )
                 positions[0, ndx] = -10
                 positions[1, ndx] = -10
         return positions
