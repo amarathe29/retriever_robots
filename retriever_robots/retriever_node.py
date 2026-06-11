@@ -683,7 +683,6 @@ class RetrieveNode(Node):
     ) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
-        return False
         if controller is None:
             controller = self.pose_controller_clf
 
