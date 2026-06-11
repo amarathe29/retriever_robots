@@ -699,7 +699,7 @@ class RetrieveNode(Node):
         return f"{ns}/{frame_name}" if ns else frame_name
 
     def update_visualization(self) -> None:
-        if hasattr(self, "block_positions") and self.block_positions:
+        if hasattr(self, "block_positions") and self.block_positions is not None:
             transposed_block_positions = self.block_positions.T
             zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
             transposed_block_positions = np.hstack((transposed_block_positions, zeros_col))
