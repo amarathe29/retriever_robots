@@ -162,7 +162,7 @@ def get_robot_barrier_func(
     magnitude_limit: float = 0.3,
     boundary_points: np.ndarray = None,
     build_area_points: np.ndarray = None,
-    block_safety_radius: float = 0.07,
+    block_safety_radius: float = 0.15,
     projection_dist: float = 0.3,
 ) -> Callable[[Twist, np.ndarray, np.ndarray, np.ndarray], [Twist]]:
     """
