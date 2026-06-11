@@ -478,7 +478,7 @@ class RetrieveNode(Node):
                     pose_location=self.stockpile_safe_safe,
                     msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
                     next_state=State.STOCKPILE_PREP,
-                    controller=self.pose_controller_clf_free_constrained,
+                    controller=self.pose_controller_safe,
                 )
 
             elif self.state == State.STOCKPILE_PREP:
@@ -487,7 +487,7 @@ class RetrieveNode(Node):
                     pose_location=self.stockpile_safe,
                     msg="Reached Safe Stockpile Point, attempting DEPOSIT",
                     next_state=State.STOCKPILE_DEPOSIT,
-                    controller=self.pose_controller_clf_free_constrained,
+                    controller=self.pose_controller_safe,
                 )
 
             elif self.state == State.STOCKPILE_DEPOSIT:
@@ -616,6 +616,78 @@ class RetrieveNode(Node):
                     reached = True
 
         return cmd, reached
+
+    def pose_controller_safe(
+        self, target_pose: Pose, reversed: bool = False
+    ) -> tuple[Twist, bool]:
+
+        cmd, reached = self.pose_controller(target_pose, reversed)
+        curr_pose = self.curr_pose
+        curr_ori = yaw_from_quaternion(
+            q=curr_pose.pose.orientation, use_extrinsics=True
+        )
+
+        curr_position = [
+            curr_pose.pose.position.x,
+            curr_pose.pose.position.y,
+        ]
+        robo_pose = np.array(
+            [
+                [curr_position[0]],
+                [curr_position[1]],
+                [curr_ori],
+            ]
+        )
+        # I don't want to risk the barriers affecting the block positions in case we use them elsewhere
+        # TODO: Also doublecheck the shapes on these things
+        neighbor_positions = deepcopy(self.neighbor_positions)
+        block_positions = deepcopy(self.block_positions)
+        block_positions = None
+        if (
+            self.state
+            in [
+                State.GRABBING,
+                State.STOCKPILE_PREP_PREP,
+                State.STOCKPILE_PREP,
+                State.STOCKPILE_DEPOSIT,
+            ]
+            and block_positions is not None
+        ):
+            robot_x, robot_y, yaw = (
+                self.curr_pose.pose.position.x,
+                self.curr_pose.pose.position.y,
+                yaw_from_quaternion(self.curr_pose.pose.orientation),
+            )
+            d = 0.15
+            block_ignore_x, block_ignore_y = robot_x + d * np.cos(
+                yaw
+            ), robot_y + d * np.sin(yaw)
+            point = np.array([[block_ignore_x], [block_ignore_y]])
+            dists = np.linalg.norm(block_positions - point, axis=0).reshape((1, -1))
+            self.logger.info(f"DISTS ({dists.shape})")
+            mask = dists > 0.25
+            mask = np.vstack((mask, mask))
+            removed = block_positions[~mask]
+            self.logger.info(
+                f"Removed ({mask.shape}) the following blocks from barriers: {removed}",
+                throttle_duration_sec=2,
+            )
+            block_positions = block_positions[mask].reshape((2, -1))
+        else:
+            block_positions = None
+        try:
+            safe_cmd = self.barrier_func(
+                cmd,
+                robo_pose,
+                neighbor_positions=neighbor_positions,
+                block_positions=block_positions,
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+            )
+            return Twist(), False
+        return safe_cmd, reached
 
     # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
     def pose_controller_clf(
