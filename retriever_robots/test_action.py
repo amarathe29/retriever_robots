@@ -74,7 +74,7 @@ def main():
     point = [1.5, 3.0, 0.0]
     stockpile = np.array([[0.9, 1.25]]*4)
     node = RetrieverActionTestNode()
-    quat = quaternion_from_euler(yaw=45, units="degrees")
+    quat = quaternion_from_euler(yaw=0, units="degrees")
     print(f"Going to point {point}")
     node.send_retrieval_goal(point, stockpile, 1, quat)
     rclpy.spin(node)

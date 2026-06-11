@@ -237,7 +237,7 @@ class RetrieveNode(Node):
         self.test_pose = pose
 
         transform = self.odom_transform(self._namespaced_frame("odom"), pose.header.frame_id)
-        self.logger.error(f"TRANSSSSFORM: {transform}")
+        self.logger.error(f"TRANSSSSFORM: {transform}", throttle_duration_sec=1.0)
         pose = do_transform_pose_stamped(pose, transform)
 
         return pose
@@ -871,7 +871,7 @@ class RetrieveNode(Node):
                 positions[0, ndx] = transform.transform.translation.x
                 positions[1, ndx] = transform.transform.translation.y
             except Exception as e:
-                self.logger.error(f"Could not compute neighbor transform: {e}")
+                self.logger.error(f"Could not compute neighbor transform: {e}", throttle_duration_sec=5.0)
                 positions[0, ndx] = -10
                 positions[1, ndx] = -10
         return positions
