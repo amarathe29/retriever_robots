@@ -377,7 +377,7 @@ class RetrieveNode(Node):
 
                 self.stockpile = PoseStamped()
                 self.stockpile.header = goal_handle.request.stockpile.header
-                self.stockpile.pose.position.x = stock_pt[0]
+                self.stockpile.pose.position.x = stock_pt[0] - 0.35
                 self.stockpile.pose.position.y = stock_pt[1]
                 self.stockpile.pose.orientation = quaternion_from_euler(
                     yaw=0, units="degrees"
@@ -567,7 +567,7 @@ class RetrieveNode(Node):
         target_pose: Pose,
         gamma: float = 0.5,
         k: float = 1.0,
-        h: float = 0.5,
+        h: float = 0.6,
         forward_constraint: bool = False,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"

@@ -163,7 +163,7 @@ def get_robot_barrier_func(
     boundary_points: np.ndarray = None,
     build_area_points: np.ndarray = None,
     block_safety_radius: float = 0.07,
-    projection_dist: float = 0.45,
+    projection_dist: float = 0.3,
 ) -> Callable[[Twist, np.ndarray, np.ndarray, np.ndarray], [Twist]]:
     """
     Returns a barrier function that you feed the current cmd and robot positions to, and it will return a safe velocity. Additionally keeps the robots within the bounds of the area, and outside the build zone.
