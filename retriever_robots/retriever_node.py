@@ -711,7 +711,7 @@ class RetrieveNode(Node):
             mask = dists > 0.25
             mask = np.vstack((mask,mask))
             removed = block_positions[~mask]
-            self.logger.info(f"Removed ({dists.shape}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
+            self.logger.info(f"Removed ({mask.shape}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
             block_positions = block_positions[mask].reshape((2,-1))
 
         try:
