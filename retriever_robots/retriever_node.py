@@ -375,7 +375,7 @@ class RetrieveNode(Node):
                 self.stockpile.pose.position.x = stock_pt[0]
                 self.stockpile.pose.position.y = stock_pt[1]
                 self.stockpile.pose.orientation = quaternion_from_euler(
-                    yaw=180, units="degrees"
+                    yaw=0, units="degrees"
                 )
 
                 self.stockpile_safe = deepcopy(self.stockpile)
