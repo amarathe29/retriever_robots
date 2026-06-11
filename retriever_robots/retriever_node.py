@@ -646,19 +646,19 @@ class RetrieveNode(Node):
         # TODO: Also doublecheck the shapes on these things
         block_positions = deepcopy(self.block_positions)
         neighbor_positions = deepcopy(self.neighbor_positions)
-        # try:
-        #     safe_cmd = self.barrier_func(
-        #         cmd,
-        #         robo_pose,
-        #         neighbor_positions=neighbor_positions,
-        #         block_positions=block_positions,
-        #     )
-        # except Exception as e:
-        #     self.logger.error(
-        #         f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
-        #     )
-        #     return Twist(), False
-        return cmd, reached
+        try:
+            safe_cmd = self.barrier_func(
+                cmd,
+                robo_pose,
+                neighbor_positions=neighbor_positions,
+                block_positions=block_positions,
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+            )
+            return Twist(), False
+        return safe_cmd, reached
 
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
@@ -674,7 +674,7 @@ class RetrieveNode(Node):
     ) -> bool:
 
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
-
+        return False
         if controller is None:
             controller = self.pose_controller_clf
 
