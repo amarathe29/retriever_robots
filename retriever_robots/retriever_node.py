@@ -509,7 +509,7 @@ class RetrieveNode(Node):
                 exit_pose.pose.orientation = reverse_yaw_quaternion(
                     self.stockpile_safe.pose.orientation
                 )
-                reached = self.go_to_pose(self.stockpile_safe)
+                reached = self.go_to_pose(self.stockpile_safe, self.pose_controller)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Exited the stockpile successfully, getting safer"
@@ -521,7 +521,7 @@ class RetrieveNode(Node):
                 exit_pose.pose.orientation = reverse_yaw_quaternion(
                     self.stockpile_safe_safe.pose.orientation
                 )
-                reached = self.go_to_pose(self.stockpile_safe_safe)
+                reached = self.go_to_pose(self.stockpile_safe_safe, self.pose_controller)
                 if reached:
                     self.logger.info(
                         f"[{self.state.name}]Exited the stockpile successfully, getting safer"
