@@ -199,11 +199,6 @@ class RetrieveNode(Node):
         )
         return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
 
-    def get_odom_transform(self, message):
-        transform = self.tf_buffer.lookup_transform(
-            self._namespaced_frame("odom"), message.header.frame_id, rclpy.time.Time()
-        )
-        return transform
 
     def calculate_nav_pose(
         self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]
@@ -261,8 +256,8 @@ class RetrieveNode(Node):
         y_positions = (row_mask * resolution) + origin.position.y
 
         try:
-            transform = self.tf_buffer.lookup_transform(
-                self._namespaced_frame("odom"), "world", rclpy.time.Time()
+            transform = self.odom_transform(
+                self._namespaced_frame("odom"), "world"
             )
             transformed_x = []
             transformed_y = []
@@ -288,8 +283,8 @@ class RetrieveNode(Node):
 
 
     def build_area_callback(self, msg: PolygonStamped):
-        transform = self.tf_buffer.lookup_transform(
-            self._namespaced_frame("odom"), "world", rclpy.time.Time()
+        transform = self.odom_transform(
+            self._namespaced_frame("odom"), "world"
         )
         pts = msg.polygon.points
         pt_arr = []
@@ -740,7 +735,7 @@ class RetrieveNode(Node):
         return f"{ns}/{frame_name}" if ns else frame_name
 
     def update_visualization(self) -> None:
-        if hasattr(self, "block_positions") and self.block_positions is not None:
+        if False: #hasattr(self, "block_positions") and self.block_positions is not None:
             transposed_block_positions = self.block_positions.T
             zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
             transposed_block_positions = np.hstack((transposed_block_positions, zeros_col))
@@ -788,8 +783,9 @@ class RetrieveNode(Node):
 
     def init_barriers(self):
         if self.terminus is not None and self.origin is not None:
-            transform = self.tf_buffer.lookup_transform(
-                self._namespaced_frame("odom"), "world", rclpy.time.Time()
+            
+            transform = self.odom_transform(
+                self._namespaced_frame("odom"), "world"
             )
             origin_pt = PointStamped()
             origin_pt.header.stamp = self.get_clock().now().to_msg()
@@ -823,6 +819,31 @@ class RetrieveNode(Node):
                 boundary_points=[-5.0, 5.0, -5.0, 5.0],
                 build_area_points=[-6, -5.5, -6, -5.5],
             )
+
+
+    @property
+    def odom_transform(self, source, target):
+        if hasattr(self, 'transform'):
+            if source in self.transform.keys():
+                if target in self.transform[source].keys():
+                    return self.transform[source][target]
+                else:
+                    self.transform[source][target] = self.tf_buffer.lookup_transform(
+                        target, source, rclpy.time.Time()
+                    )
+            else:
+                self.transform[source] = {}
+                self.transform[source][target] = self.tf_buffer.lookup_transform(
+                        target, source, rclpy.time.Time()
+                    )
+        else:
+            self.transform = {}
+            self.transform[source] = {}
+            self.transform[source][target] = self.tf_buffer.lookup_transform(
+                    target, source, rclpy.time.Time()
+                )
+                
+        return self.transform[source][target]
 
     # TODO: use the world frame and published aruco tags to update the robots position
     @property
