@@ -473,7 +473,7 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Grabbed block, bringing block to Safe Stockpile Point"
                     )
                     self.state = State.STOCKPILE_PREP_PREP
-                    self.reinit_stockpiles = True
+                    self.reinit_stockpiles = False
 
             elif self.state == State.STOCKPILE_PREP_PREP:
                 # move to a safe stockpiling location
