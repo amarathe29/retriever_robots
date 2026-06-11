@@ -706,10 +706,10 @@ class RetrieveNode(Node):
             d = 0.15
             block_ignore_x, block_ignore_y = robot_x + d*np.cos(yaw), robot_y + d*np.sin(yaw)
             point = np.array([[block_ignore_x],[block_ignore_y]])
-            dists = np.linalg.norm(block_positions - point)
+            dists = np.linalg.norm(block_positions - point, axis=0)
             mask = dists > 0.25
             removed = block_positions[~mask]
-            self.logger.info(f"Removed ({point}) ({(robot_x,robot_y,yaw)}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
+            self.logger.info(f"Removed ({dists.shape}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
             block_positions = block_positions[mask].reshape((2,-1))
 
         try:
