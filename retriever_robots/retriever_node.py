@@ -228,6 +228,8 @@ class RetrieveNode(Node):
             pose.pose.position.x -= BLOCK_OFFSET * np.cos(block_angle)
             pose.pose.position.y -= BLOCK_OFFSET * np.sin(block_angle)
 
+        self.test_pose = pose
+
         transform = self.get_odom_transform(pose)
         pose = do_transform_pose_stamped(pose, transform)
 
@@ -694,6 +696,7 @@ class RetrieveNode(Node):
         marker_data = {
             "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
             "observed_block": (self.observed_block_pose, (1.0, 0.0, 0.0)),
+            "test_pose": (self.test_pose, (1.0,0.0,1.0)),
             "nav_pose": (self.nav_pose, (0.0, 1.0, 1.0)),
             "stockpile_pose": (self.stockpile, (0.0, 1.0, 0.0)),
             "stockpile_safe_pose": (self.stockpile_safe, (0.0, 0.0, 1.0)),
