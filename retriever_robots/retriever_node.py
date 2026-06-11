@@ -44,6 +44,7 @@ class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
     GRABBING = auto()
+    STOCKPILE_PREP_PREP = auto()
     STOCKPILE_PREP = auto()
     STOCKPILE_DEPOSIT = auto()
     STOCKPILE_EXIT = auto()
@@ -125,6 +126,7 @@ class RetrieveNode(Node):
         self.observed_block_pose = None
         self.stockpile = None
         self.stockpile_safe = None
+        self.stockpile_safe_safe = None
         self.recovery_pose = None
         self.terminus = None
         self.origin = None
@@ -172,6 +174,7 @@ class RetrieveNode(Node):
                     State.NAVIGATING,
                     State.GRABBING,
                     State.STOCKPILE_PREP,
+                    State.STOCKPILE_PREP_PREP,
                 ]:
                     self.tag_visible = False
                     self.logger.warning("No tag visible", throttle_duration_sec=5.0)
@@ -385,7 +388,13 @@ class RetrieveNode(Node):
 
                 self.stockpile_safe = deepcopy(self.stockpile)
                 self.stockpile_safe.pose.position.x = stock_pt_safe[0]
-                self.stockpile_safe.pose.position.y = stock_pt_safe[1]
+                self.stockpile_safe.pose.position.y = stock_pt_safe[1] + 1
+
+                self.stockpile_safe_safe = deepcopy(self.stockpile_safe)
+                self.stockpile_safe_safe.pose.position.y += 1.5
+                self.stockpile.pose.orientation = quaternion_from_euler(
+                    yaw=270, units="degrees"
+                )
 
                 transform_stockpile = self.get_odom_transform(self.stockpile)
 
@@ -395,6 +404,10 @@ class RetrieveNode(Node):
                 self.stockpile_safe = do_transform_pose_stamped(
                     self.stockpile_safe, transform_stockpile
                 )
+                self.stockpile_safe_safe = do_transform_pose_stamped(
+                    self.stockpile_safe_safe, transform_stockpile
+                )
+        
 
                 self.nav_pose = self.calculate_nav_pose(
                     goal_handle.request, stock_pt_safe
@@ -437,7 +450,16 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Grabbed block, bringing block to Safe Stockpile Point"
                     )
-                    self.state = State.STOCKPILE_PREP
+                    self.state = State.STOCKPILE_PREP_PREP
+
+            elif self.state == State.STOCKPILE_PREP_PREP:
+                # move to a safe stockpiling location
+                self.stockpile_behavior(
+                    pose_location=self.stockpile_safe_safe,
+                    msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
+                    next_state=State.STOCKPILE_PREP,
+                )
+
 
             elif self.state == State.STOCKPILE_PREP:
                 # move to a safe stockpiling location
@@ -719,6 +741,7 @@ class RetrieveNode(Node):
             "nav_pose": (self.nav_pose, (0.0, 1.0, 1.0)),
             "stockpile_pose": (self.stockpile, (0.0, 1.0, 0.0)),
             "stockpile_safe_pose": (self.stockpile_safe, (0.0, 0.0, 1.0)),
+            "stockpile_safe_safe_pose": (self.stockpile_safe_safe, (1.0, 0.5, 0.0))
         }
 
         for i, nary in enumerate(marker_data.items()):
