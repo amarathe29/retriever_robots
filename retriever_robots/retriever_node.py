@@ -322,9 +322,9 @@ class RetrieveNode(Node):
         return do_transform_pose_stamped(pos, transform)
 
     def stockpile_behavior(
-        self, pose_location: PoseStamped, msg: str, next_state: State
+        self, pose_location: PoseStamped, msg: str, next_state: State, controller: Callable = None
     ) -> None:
-        reached = self.go_to_pose(pose_location)
+        reached = self.go_to_pose(pose_location, controller=controller)
         if self.tag_visible and reached:
             self.logger.info(f"[{self.state.name}]{msg}")
             self.exit_pose = self.calculate_exit_pose()
@@ -453,6 +453,7 @@ class RetrieveNode(Node):
                     pose_location=self.stockpile,
                     msg="Stockpiled block, attempting to EXIT the STOCKPILE",
                     next_state=State.STOCKPILE_EXIT,
+                    controller=self.pose_controller,
                 )
 
             elif self.state == State.STOCKPILE_EXIT:
