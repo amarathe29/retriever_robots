@@ -649,7 +649,7 @@ class RetrieveNode(Node):
         # TODO: Also doublecheck the shapes on these things
         neighbor_positions = deepcopy(self.neighbor_positions)
         block_positions = deepcopy(self.block_positions)
-        block_positions = None
+        # block_positions = None
         if (
             self.state
             in [
