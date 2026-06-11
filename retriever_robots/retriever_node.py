@@ -49,6 +49,7 @@ class State(Enum):
     STOCKPILE_DEPOSIT = auto()
     STOCKPILE_EXIT = auto()
     STOCKPILE_DEPART = auto()
+    STOCKPILE_FLEE = auto()
     RETURNING = auto()
     RECOVERY = auto()
 
@@ -484,13 +485,26 @@ class RetrieveNode(Node):
                     self.state = State.STOCKPILE_DEPART
 
             elif self.state == State.STOCKPILE_DEPART:
-                self.stockpile_safe.pose.orientation = reverse_yaw_quaternion(
+                exit_pose = deepcopy(self.stockpile_safe)
+                exit_pose.orientation = reverse_yaw_quaternion(
                     self.stockpile_safe.pose.orientation
                 )
                 reached = self.go_to_pose(self.stockpile_safe)
                 if reached:
                     self.logger.info(
-                        f"[{self.state.name}]Exited the stockpile successfully, returning to base"
+                        f"[{self.state.name}]Exited the stockpile successfully, getting safer"
+                    )
+                    self.state = State.STOCKPILE_FLEE
+
+            elif self.state == State.STOCKPILE_FLEE:
+                exit_pose = deepcopy(self.stockpile_safe_safe)
+                exit_pose.orientation = reverse_yaw_quaternion(
+                    self.stockpile_safe_safe.pose.orientation
+                )
+                reached = self.go_to_pose(self.stockpile_safe_safe)
+                if reached:
+                    self.logger.info(
+                        f"[{self.state.name}]Exited the stockpile successfully, getting safer"
                     )
                     self.state = State.RETURNING
 
@@ -704,7 +718,7 @@ class RetrieveNode(Node):
         target_pose: PoseStamped,
         controller: Callable[[Pose], tuple[Twist, bool]] = None,
     ) -> bool:
-
+        return False
         assert target_pose.header.frame_id == self._namespaced_frame("odom")
         if controller is None:
             controller = self.pose_controller_clf
