@@ -709,8 +709,8 @@ class RetrieveNode(Node):
             dists = np.linalg.norm(block_positions - point)
             mask = dists > 0.25
             removed = block_positions[~mask]
-            self.logger.info(f"Removed ({point.shape}) ({block_positions.shape}) ({block_positions[mask].shape}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
-            block_positions = block_positions[mask]
+            self.logger.info(f"Removed ({point}) ({(robot_x,robot_y,yaw)}) the following blocks from barriers: {removed}", throttle_duration_sec=2)
+            block_positions = block_positions[mask].reshape((2,-1))
 
         try:
             safe_cmd = self.barrier_func(
