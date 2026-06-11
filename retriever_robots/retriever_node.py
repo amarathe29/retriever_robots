@@ -389,7 +389,7 @@ class RetrieveNode(Node):
 
                 self.stockpile = PoseStamped()
                 self.stockpile.header = goal_handle.request.stockpile.header
-                self.stockpile.pose.position.x = stock_pt[0] - 0.35
+                self.stockpile.pose.position.x = stock_pt[0] - 0.25
                 self.stockpile.pose.position.y = stock_pt[1]
                 self.stockpile.pose.orientation = stock_pile_quat
 
