@@ -821,7 +821,6 @@ class RetrieveNode(Node):
             )
 
 
-    @property
     def odom_transform(self, source, target):
         if hasattr(self, 'transform'):
             if source in self.transform.keys():
