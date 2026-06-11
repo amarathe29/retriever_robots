@@ -621,9 +621,9 @@ class RetrieveNode(Node):
     def pose_controller_clf(
         self,
         target_pose: Pose,
-        gamma: float = 0.7,
-        k: float = 1.2,
-        h: float = 0.7,
+        gamma: float = 0.6,
+        k: float = 0.8,
+        h: float = 0.5,
         forward_constraint: bool = False,
         enable_barriers: bool = True,
     ) -> tuple[Twist, bool]:
@@ -691,7 +691,7 @@ class RetrieveNode(Node):
 
         if e < 0.07:
             self.logger.info("Position error low", throttle_duration_sec=1.0)
-            if alpha < 0.05:
+            if alpha < 0.3:
                 self.logger.info("Angular error low", throttle_duration_sec=1.0)
                 reached = True
 
