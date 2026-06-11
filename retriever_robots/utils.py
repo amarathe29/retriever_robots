@@ -14,7 +14,9 @@ options["feastol"] = 1e-2
 options["maxiters"] = 50
 
 
-def do_transform_transform(t1: TransformStamped, t2: TransformStamped) -> TransformStamped:
+def do_transform_transform(
+    t1: TransformStamped, t2: TransformStamped
+) -> TransformStamped:
     # given two transforms, produce t1 * t2
     T1 = convert_transform_to_matrix(t1)
     T2 = convert_transform_to_matrix(t2)
@@ -66,8 +68,11 @@ def euler_from_quaternion(
         "XYZ" if not use_extrinsics else "xyz"
     )
 
+
 def yaw_from_quaternion(q: Quaternion, use_extrinsics: bool = False) -> float:
-    _, _, yaw = euler_from_quaternion(x=q.x, y=q.y, z=q.z, w=q.w,  use_extrinsics=use_extrinsics)
+    _, _, yaw = euler_from_quaternion(
+        x=q.x, y=q.y, z=q.z, w=q.w, use_extrinsics=use_extrinsics
+    )
     return yaw
 
 
@@ -132,7 +137,9 @@ def angle_wrap(angle: float) -> float:
     return wrapped
 
 
-def si_to_uni_vel(dxi: np.ndarray, pose: np.ndarray, projection_distance:float=0.03) -> np.ndarray:
+def si_to_uni_vel(
+    dxi: np.ndarray, pose: np.ndarray, projection_distance: float = 0.03
+) -> np.ndarray:
     d = projection_distance
     h = float(pose[2].item()) if hasattr(pose[2], "item") else float(pose[2])
     T_inv = np.array([[np.cos(h), np.sin(h)], [-np.sin(h) / d, np.cos(h) / d]])
@@ -142,7 +149,9 @@ def si_to_uni_vel(dxi: np.ndarray, pose: np.ndarray, projection_distance:float=0
     return dxu
 
 
-def uni_to_si_vel(dxu: np.ndarray, pose: np.ndarray, projection_distance: float=0.05) -> np.ndarray:
+def uni_to_si_vel(
+    dxu: np.ndarray, pose: np.ndarray, projection_distance: float = 0.05
+) -> np.ndarray:
     d = projection_distance
 
     T = np.array([[1, 0], [0, d]])
@@ -157,7 +166,7 @@ def uni_to_si_vel(dxu: np.ndarray, pose: np.ndarray, projection_distance: float=
 
 
 def get_robot_barrier_func(
-    safety_radius: float = 1.0,
+    safety_radius: float = 0.6,
     barrier_gain: float = 20.0,
     magnitude_limit: float = 0.3,
     boundary_points: np.ndarray = None,
@@ -195,7 +204,9 @@ def get_robot_barrier_func(
             Twist: A safe velocity
         """
         if neighbor_positions is not None:
-            assert neighbor_positions.shape[0] == 2, "Neighbor positions is incorrect shape"
+            assert (
+                neighbor_positions.shape[0] == 2
+            ), "Neighbor positions is incorrect shape"
         if block_positions is not None:
             assert block_positions.shape[0] == 2, "Block positions is incorrect shape"
 
@@ -216,7 +227,9 @@ def get_robot_barrier_func(
             else 0
         )
         # TODO: Figure out the actual boundary points of our space
-        bp = boundary_points if boundary_points is not None else np.array([-5, 5, -5, 5])
+        bp = (
+            boundary_points if boundary_points is not None else np.array([-5, 5, -5, 5])
+        )
         bap = (
             build_area_points
             if build_area_points is not None
