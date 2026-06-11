@@ -216,7 +216,7 @@ def get_robot_barrier_func(
             else 0
         )
         # TODO: Figure out the actual boundary points of our space
-        bp = boundary_points if boundary_points is not None else np.array([0, 6, 0, 3])
+        bp = boundary_points if boundary_points is not None else np.array([-5, 5, -5, 5])
         bap = (
             build_area_points
             if build_area_points is not None
