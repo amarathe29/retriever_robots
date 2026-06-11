@@ -670,6 +670,11 @@ class RetrieveNode(Node):
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
         w = k * alpha + gamma * (ca * sinc_alpha) * (alpha + h * theta_error_vec)
+        v_min = 0.05
+        w_min = 0.05
+
+        v = np.sign(v) * max(v_min, np.abs(v))
+        w = np.sign(w) * max(w_min, np.abs(w))
 
         if e < 0.025:
             self.logger.info("Position error low", throttle_duration_sec=1.0)
