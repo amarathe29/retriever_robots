@@ -564,9 +564,9 @@ class RetrieveNode(Node):
     def pose_controller_clf(
         self,
         target_pose: Pose,
-        gamma: float = 0.7,
+        gamma: float = 0.5,
         k: float = 1.0,
-        h: float = 0.7,
+        h: float = 0.5,
         forward_constraint: bool = False,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
@@ -667,7 +667,7 @@ class RetrieveNode(Node):
                 f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
             )
             return Twist(), False
-        return cmd, reached
+        return safe_cmd, reached
 
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
