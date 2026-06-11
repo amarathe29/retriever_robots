@@ -703,11 +703,11 @@ class RetrieveNode(Node):
 
         if self.state in [State.GRABBING, State.STOCKPILE_PREP_PREP, State.STOCKPILE_PREP, State.STOCKPILE_DEPOSIT]:
             robot_x, robot_y, yaw = self.curr_pose.pose.position.x, self.curr_pose.pose.position.y, yaw_from_quaternion(self.curr_pose.pose.orientation)
-            d = 0.3
+            d = 0.15
             block_ignore_x, block_ignore_y = robot_x + d*np.cos(yaw), robot_y + d*np.sin(yaw)
             point = np.array([[block_ignore_x],[block_ignore_y]])
             dists = np.linalg.norm(block_positions - point)
-            mask = dists > 0.05
+            mask = dists > 0.25
             removed = block_positions[~mask]
             self.logger.info(f"Removed the following blocks from barriers: {removed}", throttle_duration_sec=2)
             block_positions = block_positions[mask]
