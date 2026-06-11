@@ -556,9 +556,9 @@ class RetrieveNode(Node):
     def pose_controller_clf(
         self,
         target_pose: Pose,
-        gamma: float = 0.7,
-        k: float = 1.0,
-        h: float = 0.7,
+        gamma: float = 0.9,
+        k: float = 1.4,
+        h: float = 0.9,
         forward_constraint: bool = False,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
