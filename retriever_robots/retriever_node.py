@@ -506,7 +506,7 @@ class RetrieveNode(Node):
 
             elif self.state == State.STOCKPILE_DEPART:
                 exit_pose = deepcopy(self.stockpile_safe)
-                exit_pose.orientation = reverse_yaw_quaternion(
+                exit_pose.pose.orientation = reverse_yaw_quaternion(
                     self.stockpile_safe.pose.orientation
                 )
                 reached = self.go_to_pose(self.stockpile_safe)
@@ -518,7 +518,7 @@ class RetrieveNode(Node):
 
             elif self.state == State.STOCKPILE_FLEE:
                 exit_pose = deepcopy(self.stockpile_safe_safe)
-                exit_pose.orientation = reverse_yaw_quaternion(
+                exit_pose.pose.orientation = reverse_yaw_quaternion(
                     self.stockpile_safe_safe.pose.orientation
                 )
                 reached = self.go_to_pose(self.stockpile_safe_safe)
