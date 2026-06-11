@@ -110,7 +110,6 @@ class RetrieveNode(Node):
 
         self.state = State.IDLE
         self.return_state = State.NAVIGATING
-        self.pose = None
         self.odom = None
         self.start_pose_set = False
         self._start_pose = None
@@ -556,9 +555,9 @@ class RetrieveNode(Node):
     def pose_controller_clf(
         self,
         target_pose: Pose,
-        gamma: float = 0.9,
-        k: float = 1.4,
-        h: float = 0.9,
+        gamma: float = 0.7,
+        k: float = 1.0,
+        h: float = 0.7,
         forward_constraint: bool = False,
     ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
@@ -647,19 +646,19 @@ class RetrieveNode(Node):
         # TODO: Also doublecheck the shapes on these things
         block_positions = deepcopy(self.block_positions)
         neighbor_positions = deepcopy(self.neighbor_positions)
-        try:
-            safe_cmd = self.barrier_func(
-                cmd,
-                robo_pose,
-                neighbor_positions=neighbor_positions,
-                block_positions=block_positions,
-            )
-        except Exception as e:
-            self.logger.error(
-                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
-            )
-            return Twist(), False
-        return safe_cmd, reached
+        # try:
+        #     safe_cmd = self.barrier_func(
+        #         cmd,
+        #         robo_pose,
+        #         neighbor_positions=neighbor_positions,
+        #         block_positions=block_positions,
+        #     )
+        # except Exception as e:
+        #     self.logger.error(
+        #         f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+        #     )
+        #     return Twist(), False
+        return cmd, reached
 
     # TODO: Implement the robot moving backwards better than this. Made it somewhat better
     def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
@@ -764,11 +763,7 @@ class RetrieveNode(Node):
     # TODO: use the world frame and published aruco tags to update the robots position
     @property
     def curr_pose(self) -> PoseStamped | None:
-        if hasattr(self, "pose") and self.pose is not None:
-            self.logger.debug("Using pose topic")
-            return self.pose
-        elif hasattr(self, "odom") and self.odom is not None:
-            self.logger.debug("Using odometry topic")
+        if hasattr(self, "odom") and self.odom is not None:
             pose = PoseStamped()
             pose.header.frame_id = self._namespaced_frame("odom")
             pose.header.stamp = self.get_clock().now().to_msg()
