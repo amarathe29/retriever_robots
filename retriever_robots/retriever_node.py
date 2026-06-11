@@ -790,8 +790,8 @@ class RetrieveNode(Node):
                 positions[1, ndx] = transform.transform.translation.y
             except Exception as e:
                 self.logger.error(f"Could not compute neighbor transform: {e}")
-                positions[0, ndx] = 0
-                positions[1, ndx] = 0
+                positions[0, ndx] = -10
+                positions[1, ndx] = -10
         return positions
 
 
