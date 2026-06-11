@@ -14,6 +14,7 @@ from geometry_msgs.msg import (
     Twist,
     PointStamped,
     PolygonStamped,
+    TransformStamped,
 )
 from nav_msgs.msg import OccupancyGrid, Odometry
 from sensor_msgs.msg import PointCloud2, PointField
@@ -86,6 +87,10 @@ class RetrieveNode(Node):
 
         self.block_sub = self.create_subscription(
             OccupancyGrid, "/block_mask", self.block_callback, 10
+        )
+
+        self.tf_sub = self.create_subscription(
+            TransformStamped, f"{self.get_namespace()}/odom_transform", self.odom_transform_cb, 10
         )
 
         # Set up publisher
@@ -847,6 +852,13 @@ class RetrieveNode(Node):
                 build_area_points=[-6, -5.5, -6, -5.5],
             )
 
+    def odom_transform_cb(self, trans):
+        if hasattr(self, 'transform'):
+            if "world" not in self.transform:
+                self.transform["world"] = {}
+            self.transform["world"]["odom"] = trans
+        else:
+            self.transform = {}
 
     def odom_transform(self, target, source):
         if hasattr(self, 'transform'):

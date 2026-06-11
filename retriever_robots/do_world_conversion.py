@@ -24,11 +24,13 @@ class WorldConversionNode(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.timer = self.create_timer(0.05, self.timer_callback)
+        self.timer = self.create_timer(0.1, self.timer_callback)
         self.valid = False
 
 
         self.pub = self.create_publisher(Bool, f"{self.get_namespace()}/world_conversion_active", 10)
+
+        self.tf_pub = self.create_publisher(TransformStamped, f"{self.get_namespace()}/odom_transform", 10)
 
     def _namespaced_frame(self, frame_name):
         ns = self.get_namespace().strip("/")
@@ -61,6 +63,8 @@ class WorldConversionNode(Node):
 
             # Broadcast the new transform from world to odom
             self.tf_broadcaster.sendTransform(world_to_odom)
+
+            self.tf_pub.publish(world_to_odom)
 
         except Exception as e:
             self.get_logger().debug(f"Could not find transform: {e}")
