@@ -269,8 +269,9 @@ class RetrieveNode(Node):
             self.block_positions = np.vstack(
                 np.array(transformed_x), np.array(transformed_y)
             )
-        except Exception:
-            self.logger.warn(f"Failed to find the block positions", throttle_duration_sec=5.0)
+        except Exception as e:
+            self.logger.warn(f"Failed to find the block positions:\n {e}", throttle_duration_sec=5.0)
+            
             return
 
 
