@@ -399,6 +399,12 @@ class RetrieveNode(Node):
                     yaw=270, units="degrees"
                 )
 
+                try:
+                    self.odom_transform(self._namespaced_frame("odom"), 'world')
+                except Exception:
+                    self.logger.info(f"Some frame does not exist, waiting for it to exist")
+                    return
+
                 transform_stockpile = self.odom_transform(self._namespaced_frame("odom"), self.stockpile.header.frame_id)
 
                 self.stockpile = do_transform_pose_stamped(
@@ -701,7 +707,7 @@ class RetrieveNode(Node):
             block_ignore_x, block_ignore_y = robot_x + d*np.cos(yaw), robot_y + d*np.sin(yaw)
             point = np.array([[block_ignore_x],[block_ignore_y]])
             dists = np.linalg.norm(block_positions - point)
-            mask = np.where(dists > 0.05)
+            mask = dists > 0.05
             removed = block_positions[~mask]
             self.logger.info(f"Removed the following blocks from barriers: {removed}", throttle_duration_sec=2)
             block_positions = block_positions[mask]
