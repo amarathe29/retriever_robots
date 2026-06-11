@@ -141,6 +141,8 @@ class RetrieveNode(Node):
         self.origin = None
         self.build_area_points = None
 
+        self.reinit_stockpiles = False
+
         self.test_pose = None  # debug
 
         self.missing_tag_count = 0
@@ -387,23 +389,23 @@ class RetrieveNode(Node):
 
                 stock_pile_quat = quaternion_from_euler(yaw=0, units="degrees")
 
-                self.stockpile = PoseStamped()
-                self.stockpile.header = goal_handle.request.stockpile.header
-                self.stockpile.pose.position.x = stock_pt[0] - 0.25
-                self.stockpile.pose.position.y = stock_pt[1]
-                self.stockpile.pose.orientation = stock_pile_quat
+                self.stockpile_world = PoseStamped()
+                self.stockpile_world.header = goal_handle.request.stockpile.header
+                self.stockpile_world.pose.position.x = stock_pt[0] - 0.25
+                self.stockpile_world.pose.position.y = stock_pt[1]
+                self.stockpile_world.pose.orientation = stock_pile_quat
 
-                self.stockpile_safe = PoseStamped()
-                self.stockpile_safe.header = goal_handle.request.stockpile.header
-                self.stockpile_safe.pose.position.x = stock_pt_safe[0]
-                self.stockpile_safe.pose.position.y = stock_pt_safe[1]
-                self.stockpile_safe.pose.orientation = stock_pile_quat
+                self.stockpile_safe_world = PoseStamped()
+                self.stockpile_safe_world.header = goal_handle.request.stockpile.header
+                self.stockpile_safe_world.pose.position.x = stock_pt_safe[0]
+                self.stockpile_safe_world.pose.position.y = stock_pt_safe[1]
+                self.stockpile_safe_world.pose.orientation = stock_pile_quat
 
-                self.stockpile_safe_safe = PoseStamped()
-                self.stockpile_safe_safe.header = goal_handle.request.stockpile.header
-                self.stockpile_safe_safe.pose.position.x = stock_pt_safe[0] + 1
-                self.stockpile_safe_safe.pose.position.y = stock_pt_safe[1] + 1.5
-                self.stockpile_safe_safe.pose.orientation = quaternion_from_euler(
+                self.stockpile_safe_safe_world = PoseStamped()
+                self.stockpile_safe_safe_world.header = goal_handle.request.stockpile.header
+                self.stockpile_safe_safe_world.pose.position.x = stock_pt_safe[0] + 1
+                self.stockpile_safe_safe_world.pose.position.y = stock_pt_safe[1] + 1.5
+                self.stockpile_safe_safe_world.pose.orientation = quaternion_from_euler(
                     yaw=270, units="degrees"
                 )
 
@@ -416,17 +418,17 @@ class RetrieveNode(Node):
                     continue
 
                 transform_stockpile = self.odom_transform(
-                    self._namespaced_frame("odom"), self.stockpile.header.frame_id
+                    self._namespaced_frame("odom"), self.stockpile_world.header.frame_id
                 )
 
                 self.stockpile = do_transform_pose_stamped(
-                    self.stockpile, transform_stockpile
+                    self.stockpile_world, transform_stockpile
                 )
                 self.stockpile_safe = do_transform_pose_stamped(
-                    self.stockpile_safe, transform_stockpile
+                    self.stockpile_safe_world, transform_stockpile
                 )
                 self.stockpile_safe_safe = do_transform_pose_stamped(
-                    self.stockpile_safe_safe, transform_stockpile
+                    self.stockpile_safe_safe_world, transform_stockpile
                 )
 
                 self.nav_pose = self.calculate_nav_pose(
@@ -471,9 +473,25 @@ class RetrieveNode(Node):
                         f"[{self.state.name}]Grabbed block, bringing block to Safe Stockpile Point"
                     )
                     self.state = State.STOCKPILE_PREP_PREP
+                    self.reinit_stockpiles = True
 
             elif self.state == State.STOCKPILE_PREP_PREP:
                 # move to a safe stockpiling location
+                if self.reinit_stockpiles:
+                    transform_stockpile = self.odom_transform(
+                        self._namespaced_frame("odom"), self.stockpile_world.header.frame_id
+                    )
+
+                    self.stockpile = do_transform_pose_stamped(
+                        self.stockpile_world, transform_stockpile
+                    )
+                    self.stockpile_safe = do_transform_pose_stamped(
+                        self.stockpile_safe_world, transform_stockpile
+                    )
+                    self.stockpile_safe_safe = do_transform_pose_stamped(
+                        self.stockpile_safe_safe_world, transform_stockpile
+                    )
+                    self.reinit_stockpiles = False
                 self.stockpile_behavior(
                     pose_location=self.stockpile_safe_safe,
                     msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
