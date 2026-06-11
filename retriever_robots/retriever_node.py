@@ -526,24 +526,13 @@ class RetrieveNode(Node):
                     self.logger.info(
                         f"[{self.state.name}]Exited the stockpile successfully, getting safer"
                     )
-                    self.state = State.RETURNING
-
-            # This state is just if we want the robot to return to the starting position
-            elif self.state == State.RETURNING:
-                if self._start_pose is not None:
-                    goal_reached = self.go_to_pose(
-                        self._start_pose, controller=self.pose_controller_clf
-                    )
-                    if goal_reached:
-                        self.logger.info(
-                            f"[{self.state.name}]Returned to start, finishing action and returning to IDLE state"
-                        )
-                        goal_handle.succeed()
-                        result = self.create_result(
+                    goal_handle.succeed()
+                    result = self.create_result(
                             success=True, pose=self.observed_block_pose
                         )
-                        self.state = State.IDLE
-                        return result
+                    self.state = State.IDLE
+                    return result
+
 
             elif self.state == State.RECOVERY:
                 cmd = Twist()
