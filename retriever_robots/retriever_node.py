@@ -236,7 +236,7 @@ class RetrieveNode(Node):
 
         self.test_pose = pose
 
-        transform = self.get_odom_transform(pose)
+        transform = self.odom_transform(self._namespaced_frame("odom"), pose.header.frame_id)
         pose = do_transform_pose_stamped(pose, transform)
 
         return pose
@@ -301,7 +301,7 @@ class RetrieveNode(Node):
 
     def save_block_pose(self) -> PoseStamped:
         block_loc = deepcopy(self.observed_block_pose)
-        transform = self.get_odom_transform(block_loc)
+        transform = self.odom_transform(self._namespaced_frame("odom"), block_loc.header.frame_id)
 
         res = do_transform_pose_stamped(block_loc, transform)
         res.pose.orientation = self.curr_pose.pose.orientation
@@ -398,7 +398,7 @@ class RetrieveNode(Node):
                     yaw=270, units="degrees"
                 )
 
-                transform_stockpile = self.get_odom_transform(self.stockpile)
+                transform_stockpile = self.odom_transform(self._namespaced_frame("odom"), self.stockpile.header.frame_id)
 
                 self.stockpile = do_transform_pose_stamped(
                     self.stockpile, transform_stockpile
