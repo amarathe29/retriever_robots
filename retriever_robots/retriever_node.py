@@ -622,8 +622,8 @@ class RetrieveNode(Node):
         self,
         target_pose: Pose,
         gamma: float = 0.7,
-        k: float = 0.8,
-        h: float = 0.3,
+        k: float = 1.2,
+        h: float = 0.7,
         forward_constraint: bool = False,
         enable_barriers: bool = True,
     ) -> tuple[Twist, bool]:
