@@ -401,7 +401,7 @@ class RetrieveNode(Node):
 
                 self.stockpile_safe_safe = PoseStamped()
                 self.stockpile_safe_safe.header = goal_handle.request.stockpile.header
-                self.stockpile_safe_safe.pose.position.x = stock_pt_safe[0]
+                self.stockpile_safe_safe.pose.position.x = stock_pt_safe[0] + 1
                 self.stockpile_safe_safe.pose.position.y = stock_pt_safe[1] + 1.5
                 self.stockpile_safe_safe.pose.orientation = quaternion_from_euler(
                     yaw=270, units="degrees"
