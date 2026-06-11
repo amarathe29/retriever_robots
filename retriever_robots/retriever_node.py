@@ -876,7 +876,7 @@ class RetrieveNode(Node):
                 f"Initializing barriers with boundaries: {boundary_points}\n Build area points are {self.build_area_points}"
             )
             self.logger.info(f"Currently located at {self.curr_pose}")
-            # boundary_points = None
+            boundary_points = None
             self.barrier_func = get_robot_barrier_func(
                 boundary_points=boundary_points,
                 build_area_points=self.build_area_points,
