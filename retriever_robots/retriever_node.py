@@ -125,6 +125,8 @@ class RetrieveNode(Node):
         self.origin = None
         self.build_area_points = None
 
+        self.test_pose = None # debug
+
         self.missing_tag_count = 0
         self.tag_visible = False
         self.valid_tf_tree = False
