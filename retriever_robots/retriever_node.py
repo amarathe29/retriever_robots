@@ -706,7 +706,7 @@ class RetrieveNode(Node):
             d = 0.15
             block_ignore_x, block_ignore_y = robot_x + d*np.cos(yaw), robot_y + d*np.sin(yaw)
             point = np.array([[block_ignore_x],[block_ignore_y]])
-            dists = np.linalg.norm(block_positions - point, axis=1)
+            dists = np.linalg.norm(block_positions - point, axis=0)
             self.logger.info(f"DISTS ({dists.shape})")
             mask = dists > 0.25
             removed = block_positions[~mask]
