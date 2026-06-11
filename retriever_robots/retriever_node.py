@@ -379,20 +379,26 @@ class RetrieveNode(Node):
                 stock_pt = np.mean([(pt.x, pt.y) for pt in stockpile_points], axis=0)
                 stock_pt_safe = (stock_pt[0] - STOCK_CLEARANCE, stock_pt[1])
 
+                stock_pile_quat = quaternion_from_euler(
+                    yaw=0, units="degrees"
+                )
+
                 self.stockpile = PoseStamped()
                 self.stockpile.header = goal_handle.request.stockpile.header
                 self.stockpile.pose.position.x = stock_pt[0] - 0.35
                 self.stockpile.pose.position.y = stock_pt[1]
-                self.stockpile.pose.orientation = quaternion_from_euler(
-                    yaw=0, units="degrees"
-                )
+                self.stockpile.pose.orientation = stock_pile_quat
 
-                self.stockpile_safe = deepcopy(self.stockpile)
+                self.stockpile_safe = PoseStamped()
+                self.stockpile_safe.header = goal_handle.request.stockpile.header
                 self.stockpile_safe.pose.position.x = stock_pt_safe[0]
-                self.stockpile_safe.pose.position.y = stock_pt_safe[1] + 1
+                self.stockpile_safe.pose.position.y = stock_pt_safe[1]
+                self.stockpile_safe.orientation = stock_pile_quat
 
-                self.stockpile_safe_safe = deepcopy(self.stockpile_safe)
-                self.stockpile_safe_safe.pose.position.y += 1.5
+                self.stockpile_safe_safe = PoseStamped()
+                self.stockpile_safe_safe.header = goal_handle.request.stockpile.header
+                self.stockpile_safe_safe.pose.position.x = stock_pt_safe[0]
+                self.stockpile_safe_safe.pose.position.y = stock_pt_safe[1] + 1.5
                 self.stockpile.pose.orientation = quaternion_from_euler(
                     yaw=270, units="degrees"
                 )
