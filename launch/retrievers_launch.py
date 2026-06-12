@@ -35,6 +35,22 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", "info"],
             ),
             Node(
+                package="retriever_robots",
+                executable="detect_block",
+                name="detect_block",
+                namespace=namespace,
+                output="screen",
+                arguments=["--ros-args", "--log-level", "info"],
+            ),
+            Node(
+                package="retriever_robots",
+                executable="do_world_conversion",
+                name="do_world_conversion",
+                namespace=namespace,
+                output="screen",
+                arguments=["--ros-args", "--log-level", "info"],
+            ),
+            Node(
                 package="rosaria2",
                 executable="rosaria2_debug",
                 name="rosaria2_node",
@@ -43,10 +59,12 @@ def generate_launch_description():
                 remappings=[("pose", "odom")],
                 parameters=[
                     {
-                        "port": "/dev/ttyUSB0",
-                        "frame_id": "base_link",
-                        "odom_frame_id": "odom",
-                        "tf_prefix": "rename_when_launching",
+                        "serial_port": "/dev/ttyUSB0",
+                        "frame_id_prefix": namespace,
+                        "frame_id_odom": "/odom",
+                        "frame_id_base_link": "/base_link",
+                        "frame_id_bumper": "/bumper",
+                        "frame_id_sonar": "/sonar",
                     }
                 ],
                 arguments=["--ros-args", "--log-level", "warn"],
@@ -56,9 +74,9 @@ def generate_launch_description():
                 launch_arguments={
                     "initial_reset": "true",
                     "camera_namespace": namespace,
-                    "depth_module.depth_profile": "1280x720x30",
-                    "rgb_camera.color_profile": "1280x720x30",
-                    "enable_sync": "true",
+                    "depth_module.depth_profile": "640x360x30",
+                    "rgb_camera.color_profile": "640x360x30",
+                    'publish_tf': 'false',
                 }.items(),
             ),
             # ros2 action send_goal /rename_when_launching/gotoblock retriever_msgs/action/GoToBlock   "{goal_pose: {position: {x: 1.3, y: -0.2, z: 0.0}, orientation:{x: 0.0, y: 0.0, z: 0.0, w: 1.0}}, block_type: 1}"

@@ -38,7 +38,9 @@ setup(
     entry_points={
         "console_scripts": [
             "retriever_node = retriever_robots.retriever_node:main",
-            "check_tags = retriever_robots.check_tags:main",
+            "detect_block = retriever_robots.detect_block:main",
+            "do_world_conversion = retriever_robots.do_world_conversion:main",
+            "test_action = retriever_robots.test_action:main",
             ],
     },
 )

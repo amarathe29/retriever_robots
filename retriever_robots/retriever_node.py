@@ -1,540 +1,731 @@
+from collections.abc import Callable
+from copy import deepcopy
+from enum import Enum, auto
+
+import numpy as np
 import rclpy
-from rclpy.node import Node
+import tf2_ros
+from cc_interfaces.action import RetrievalTask  # type: ignore
+from cc_interfaces.msg import Block  # type: ignore
+from geometry_msgs.msg import (
+    Pose,
+    PoseStamped,
+    Quaternion,
+    Twist,
+    PointStamped,
+    PolygonStamped,
+    TransformStamped,
+)
+from nav_msgs.msg import OccupancyGrid, Odometry
+from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs_py import point_cloud2
 from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from retriever_msgs.msg import PoseStatus  # type: ignore
+from std_msgs.msg import Bool, Header
+from tf2_geometry_msgs import do_transform_pose_stamped, do_transform_point
+from visualization_msgs.msg import Marker, MarkerArray
 
-from geometry_msgs.msg import Twist, Pose, Quaternion
-from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Image, CameraInfo
-from retriever_msgs.action import GoToBlock  # type: ignore
-import message_filters
+from retriever_robots.utils import (
+    angle_wrap,
+    euler_from_quaternion,
+    get_robot_barrier_func,
+    quaternion_from_euler,
+    reverse_yaw_quaternion,
+    yaw_from_quaternion,
+)
 
-from cv_bridge import CvBridge
-import cv2
-import numpy as np
-from enum import Enum, auto
-import math
+BLOCK_OFFSET = 0.4  # m
+REVERSE_DISTANCE = 0.4  # m
+STOCK_CLEARANCE = 1  # m clearance
 
 
-class StateMachine(Enum):
+class State(Enum):
     IDLE = auto()
     NAVIGATING = auto()
-    FIND_BLOCK_POSE = auto()
-    REACH_BLOCK = auto()
     GRABBING = auto()
-    STOCKPILING = auto()
+    STOCKPILE_PREP_PREP = auto()
+    STOCKPILE_PREP = auto()
+    STOCKPILE_DEPOSIT = auto()
+    STOCKPILE_EXIT = auto()
+    STOCKPILE_DEPART = auto()
+    STOCKPILE_FLEE = auto()
     RETURNING = auto()
     RECOVERY = auto()
 
 
-def euler_from_quaternion(x, y, z, w):
-    """
-    Converts a quaternion into standard Euler angles (Roll, Pitch, Yaw)
-    in radians. Sequence: ZYX (Yaw, Pitch, Roll).
-    """
-    t0 = 2.0 * (w * x + y * z)
-    t1 = 1.0 - 2.0 * (x * x + y * y)
-    roll = math.atan2(t0, t1)
-
-    t2 = 2.0 * (w * y - z * x)
-    t2 = 1.0 if t2 > 1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
-
-    t3 = 2.0 * (w * z + x * y)
-    t4 = 1.0 - 2.0 * (y * y + z * z)
-    yaw = math.atan2(t3, t4)
-
-    return roll, pitch, yaw
-
-
-def quaternion_from_euler(roll, pitch, yaw):
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    q = [0.0, 0.0, 0.0, 0.0]
-    q[0] = cy * cp * cr + sy * sp * sr  # w
-    q[1] = cy * cp * sr - sy * sp * cr  # x
-    q[2] = cy * sp * cr + sy * cp * sr  # y
-    q[3] = sy * cp * cr - cy * sp * sr  # z
-
-    return q
-
-
 class RetrieveNode(Node):
-    """docstring for RetrieveNode."""
+    """RetrieveNode runs the state machine for each of the retriever robots."""
 
-    def __init__(self, node_name, *args):
+    def __init__(self, node_name: str, *args) -> None:
         super(RetrieveNode, self).__init__(node_name)
         # Set up subscribers
-        self.bev_pose_sub = self.create_subscription(
-            Pose, f"{self.get_namespace()}/pose", self.pose_callback, 10
-        )
         self.odom_sub = self.create_subscription(
             Odometry, f"{self.get_namespace()}/odom", self.odom_callback, 10
         )
 
-        # Set up synchronizer for color and depth images
-        self.color_sub = message_filters.Subscriber(
-            self, Image, f"{self.get_namespace()}/camera/color/image_raw"
-        )
-        self.depth_sub = message_filters.Subscriber(
-            self,
-            Image,
-            f"{self.get_namespace()}/camera/depth/image_rect_raw",
-        )
-        self.color_info = message_filters.Subscriber(
-            self,
-            CameraInfo,
-            f"{self.get_namespace()}/camera/color/camera_info",
+        # our own ad hoc topic for the locations of the blocks we can see, in the robot's frame
+
+        self.visible_block_sub = self.create_subscription(
+            PoseStatus,
+            f"{self.get_namespace()}/visible_block",
+            self.visible_block_callback,
+            10,
         )
 
-        queue_size = 10
-        slop = 0.5
-
-        self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.color_sub, self.depth_sub, self.color_info], queue_size, slop
+        self.frame_ref_sub = self.create_subscription(
+            Bool,
+            f"{self.get_namespace()}/world_conversion_active",
+            self.update_odom_state,
+            10,
         )
 
-        self.ts.registerCallback(self.cam_callback)
+        self.build_area_sub = self.create_subscription(
+            PolygonStamped, "build_polygon", self.build_area_callback, 10
+        )
+
+        self.block_sub = self.create_subscription(
+            OccupancyGrid, "/block_mask", self.block_callback, 10
+        )
+
+        self.tf_sub = self.create_subscription(
+            TransformStamped,
+            f"{self.get_namespace()}/odom_transform",
+            self.odom_transform_cb,
+            10,
+        )
 
         # Set up publisher
         self.vel_pub = self.create_publisher(
             Twist, f"{self.get_namespace()}/cmd_vel", 10
         )
 
+        self.vis_pub = self.create_publisher(
+            MarkerArray, f"{self.get_namespace()}/markers", 10
+        )
+        self.pc_pub = self.create_publisher(
+            PointCloud2, f"{self.get_namespace()}/detected_obs", 10
+        )
+
         # Set up action server
         self.retrieve_action = ActionServer(
             self,
-            GoToBlock,
-            f"{self.get_namespace()}/gotoblock",
+            RetrievalTask,
+            f"{self.get_namespace()}/retrieve_block",
             self.retrieve_callback,
         )
 
-        # AprilTag recognition stuff
-        ARUCO_TAG = cv2.aruco.DICT_APRILTAG_25h9
-        self.aruco_dict = cv2.aruco.Dictionary_get(ARUCO_TAG)
-        self.aruco_parameters = cv2.aruco.DetectorParameters_create()
-
-        self.bridge = CvBridge()
-        self.camera_matrix = None
-        self.distortion_coeffs = None
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Save the logger in ros1 style syntax, because wtf is with the self.get_logger() BS
         self.logger = self.get_logger()
         self.logger.info(f"Launched Retrieve Node for {self.get_namespace()}")
 
-        self.marker_size = 0.07
-
-        self.state = StateMachine.IDLE
-        self.pose = None
+        self.state = State.IDLE
+        self.return_state = State.NAVIGATING
         self.odom = None
         self.start_pose_set = False
         self._start_pose = None
-        self.request_pose = None
-        self.grab_pose = None
 
-    def pose_callback(self, msg: Pose) -> None:
-        self.logger.debug(f"Received Pose: {msg}")
-        self.pose = msg
-        if not self.start_pose_set:
-            self._start_pose = self.pose
-            self.start_pose_set = True
+        self.block_type = None
+        self.block_positions = None
+        self.nav_pose = None
+        self.observed_block_pose = None
+        self.stockpile = None
+        self.stockpile_safe = None
+        self.stockpile_safe_safe = None
+        self.recovery_pose = None
+        self.terminus = None
+        self.origin = None
+        self.build_area_points = None
+
+        self.reinit_stockpiles = False
+
+        self.test_pose = None  # debug
+
+        self.missing_tag_count = 0
+        self.tag_visible = False
+        self.valid_tf_tree = False
+
+        # TODO: Check the name of the Jackal, also potentially use the tf tree to figure out the boundaries???
+        self.neighbor_list = ["aruco_31", "aruco_15"]
 
     def odom_callback(self, msg: Odometry) -> None:
         self.logger.debug(f"Received Odometry: {msg}")
         self.odom = msg
         if self._start_pose is None:
-            self._start_pose = self.odom.pose.pose
+            self._start_pose = PoseStamped()
+            self._start_pose.header.frame_id = self._namespaced_frame("odom")
+            self._start_pose.pose = self.odom.pose.pose
+            self.start_pose_set = True
 
-    def cam_callback(
-        self, color_msg: Image, depth_msg: Image, color_info: CameraInfo
-    ) -> None:
+    def update_odom_state(self, valid_msg: Bool) -> None:
+        self.valid_tf_tree = valid_msg.data
 
-        if (self.camera_matrix is None) or (self.distortion_coeffs is None):
-            self.logger.warning("No camera info received yet, cannot process image")
-            self.logger.info("Received camera info, saving camera matrix")
-            self.camera_matrix = np.array(color_info.k, dtype=np.float64).reshape(
-                (3, 3)
-            )
-            self.distortion_coeffs = np.array(color_info.d, dtype=np.float64)
-            self.logger.debug(f"Camera matrix: {self.camera_matrix}")
-            return
+    def visible_block_callback(self, msg: PoseStatus) -> None:
 
-        if self.state == StateMachine.IDLE:
-            return
+        self.update_visualization()
 
-        try:
-            image = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
-            depth = self.bridge.imgmsg_to_cv2(depth_msg)
-        except Exception as e:
-            self.logger.error(f"Error in decoding images from camera: {e}")
-
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        try:
-            height, width = gray.shape
-        except Exception as e:
-            self.logger.error(f"unable to get height and width from grayscale image")
-        corners, ids, _ = cv2.aruco.detectMarkers(
-            gray, self.aruco_dict, parameters=self.aruco_parameters
-        )
-        if ids is not None:
-
-            self.logger.info(f"Detected {len(ids)} ArUco marker(s)")
-            marker_corners = corners[0][0]
-            self.logger.info(
-                f"Marker ID: {ids[0]} | Corners: {marker_corners[0]}| All Corners: {marker_corners}"
-            )
-            self.logger.info(f"State Machine State: {self.state.name.lower()}")
-
-            marker_center_x = int(
-                (
-                    marker_corners[0][0]
-                    + marker_corners[1][0]
-                    + marker_corners[2][0]
-                    + marker_corners[3][0]
-                )
-                // 4
-            )
-            marker_center_y = int(
-                (
-                    marker_corners[0][1]
-                    + marker_corners[1][1]
-                    + marker_corners[2][1]
-                    + marker_corners[3][1]
-                )
-                // 4
-            )
-
-            # Find distance to block center,
-            # reshape depth image to be same size as color image if needed
-            if depth.shape != gray.shape:
-                self.logger.warning(
-                    f"Depth image shape {depth.shape} does not match color image shape {gray.shape}, resizing depth image"
-                )
-                depth = cv2.resize(
-                    depth, (width, height), interpolation=cv2.INTER_NEAREST
-                )
-
-            if (self.state == StateMachine.FIND_BLOCK_POSE) and (
-                self.grab_pose is None
-            ):
-
-                self.logger.info(f"Searching for block")
-
-                if len(marker_corners) != 4:
-                    self.logger.error(
-                        f"Detected marker {marker_corners} does not have 4 corners, cannot estimate pose"
-                    )
-                    return
-
-                self.logger.error(
-                    f"All the intrinsics:\n {self.camera_matrix}, {self.distortion_coeffs}, {marker_corners}"
-                )
-
-                im = cv2.aruco.drawDetectedMarkers(image.copy(), corners, ids)
-                # also put a circle around the camera intrinsics principal point
-                cv2.circle(
-                    im,
-                    (int(self.camera_matrix[0, 2]), int(self.camera_matrix[1, 2])),
-                    5,
-                    (0, 255, 0),
-                    -1,
-                )
-                cv2.imwrite("detected_markers.png", im)
-
-                obj_pts = np.array(
-                    [
-                        [-self.marker_size / 2, self.marker_size / 2, 0.0],
-                        [self.marker_size / 2, self.marker_size / 2, 0.0],
-                        [self.marker_size / 2, -self.marker_size / 2, 0.0],
-                        [-self.marker_size / 2, -self.marker_size / 2, 0.0],
-                    ],
-                    dtype=np.float64,
-                )
-                ok, rvec, tvec = cv2.solvePnP(
-                    obj_pts,
-                    marker_corners,
-                    self.camera_matrix,
-                    self.distortion_coeffs,
-                    flags=cv2.SOLVEPNP_IPPE_SQUARE,
-                )
-
-                if ok:
-                    self.logger.info(f"tvec:\n{tvec}\nrvec:\n{rvec}")
-                else:
-                    self.logger.error(f"PnP Solver Failed: {ok}")
-                    return
-
-                # TODO: Split this into a function probably? I mean, that's the responsible thing to do... so of course I won't, but I acknowledge that I should.
-                # I know we don't have roll and yaw, but what if we decide to change that, future proofing right? right?  (p.s. I know this is going to bother you Zane)
-                # roll
-                gamma = np.radians(0)
-                # pitch
-                beta = np.radians(-30)
-                # yaw
-                alpha = np.radians(0)
-
-                R_marker_to_cam, _ = cv2.Rodrigues(rvec)
-                # Double checking: Image X is robot -Y, Image Y is Robot -Z, and Image Z is robot X
-                R_image_to_robotics = np.array([[0, -1, 0], [0, 0, -1], [1, 0, 0]])
-                R_euler_to_matrix = np.array(
-                    [
-                        [
-                            (np.cos(alpha) * np.cos(beta)),
-                            (
-                                (np.cos(alpha) * np.sin(beta) * np.sin(gamma))
-                                - (np.sin(alpha) * np.cos(gamma))
-                            ),
-                            (
-                                (np.cos(alpha) * np.sin(beta) * np.cos(gamma))
-                                + (np.sin(alpha) * np.sin(gamma))
-                            ),
-                        ],
-                        [
-                            (np.sin(alpha) * np.cos(beta)),
-                            (
-                                (np.sin(alpha) * np.sin(beta) * np.sin(gamma))
-                                + (np.cos(alpha) * np.cos(gamma))
-                            ),
-                            (
-                                (np.sin(alpha) * np.sin(beta) * np.cos(gamma))
-                                - (np.cos(alpha) * np.sin(gamma))
-                            ),
-                        ],
-                        [
-                            (-np.sin(beta)),
-                            (np.cos(beta) * np.sin(gamma)),
-                            (np.cos(beta) * np.cos(gamma)),
-                        ],
-                    ]
-                )
-                R_cam_to_robot = R_euler_to_matrix @ R_image_to_robotics
-
-                # The camera is like 10 cm in front of the robot wheel base, honestly this is probably unnecessary, I added it just in case
-                T_cam_to_robot = np.array([[-0.1], [0.0], [0.0]])
-
-                R_marker_to_robot = R_cam_to_robot @ R_marker_to_cam
-
-                # cam_x, cam_y, cam_z = tvec
-
-                marker_x_robot = R_marker_to_robot[:, 0].reshape(3, 1)
-                marker_x_robot[2] = 0.0
-                T_marker_to_cam = tvec.reshape(3, 1)
-                T_marker_to_robot = R_cam_to_robot @ T_marker_to_cam + T_cam_to_robot
-
-                self.logger.warn(
-                    f"Marker center is {T_marker_to_robot[0]} m away,  {T_marker_to_robot[1]} m to the left, and {T_marker_to_robot[2]} m down)"
-                )
-
-                desired_dist = 0.1
-                # Approach direction is negative if tag x-axis is pointed towards the robot and positive if tag x-axis is pointed away from the robot
-                approach_direction = -np.sign(np.dot(marker_x_robot, T_marker_to_robot))
-                approach_direction /= np.linalg.norm(approach_direction)
-
-                # TODO: If we end up putting markers on the side of the block, we need to always approach from positive Z:
-                # marker_z_robot = R_marker_to_robot[:, 2].reshape(3,1)
-                # marker_z_robot[2] = 0.0
-                # approach_direction = marker_z_robot / np.linalg.norm(marker_z_robot)
-
-                # TODO: Verify this is a unit vector and a meaningful one, and not just all in one direction
-                self.logger.info(f"Approach direction: {approach_direction}")
-
-                # Just in case self.curr_pose changes for some reason between reads to create this array, we'll store it as a var and use that
-                curr_pose = self.curr_pose
-                curr_loc = np.array(
-                    [curr_pose.position.x, curr_pose.position.y, curr_pose.position.z]
-                )
-                desired_location = (
-                    curr_loc + T_marker_to_robot + desired_dist * approach_direction
-                )
-
-                # The new location Z better be god damn 0
+        if msg.block_in_frame and not msg.tag_in_frame:
+            if self.state in [State.RECOVERY]:
                 self.logger.info(
-                    "=" * 20
-                    + f"\nCurrent location:\n{self.odom.pose.pose.position}\nProposed new location:\n{desired_location}\n"
-                    + "=" * 20
+                    f"[VisibleCallback] Block visible but tag not visible, setting recovery pose to ({msg.pose.pose.position.x}, {msg.pose.pose.position.y})",
+                    throttle_duration_sec=1.0,
                 )
-
-                self.grab_pose = Pose()
-                self.grab_pose.position.x = desired_location[0]
-                self.grab_pose.position.y = desired_location[1]
-                self.grab_pose.position.z = 0.0
-
-                # Yaw probably needs a negative or something, I'm not sure
-                yaw = np.arctan2(approach_direction[0], approach_direction[1])
-                yaw = 0.0
-                quaternion = quaternion_from_euler(roll=0.0, pitch=0.0, yaw=yaw)
-
-                self.grab_pose.orientation.w = quaternion[0]
-                self.grab_pose.orientation.x = quaternion[1]
-                self.grab_pose.orientation.y = quaternion[2]
-                self.grab_pose.orientation.z = quaternion[3]
-                self.logger.info(f"Estimated grab pose: {self.grab_pose}")
-
-    def retrieve_callback(self, goal_handle) -> GoToBlock.Result:
-        self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
-        if self.state != StateMachine.IDLE:
-            self.logger.error(f"Already running an action")
-            goal_handle.fail()
-            result = GoToBlock.Result()
-            result.success = True
-            result.end_pose = self.curr_pose
+                self.recovery_pose = msg.pose  # currently unused
             return
 
-        feedback_msg = GoToBlock.Feedback()
-        feedback_msg.block_captured = False
+        if not msg.tag_in_frame:
+            self.missing_tag_count += 1
+            if self.missing_tag_count > 10:
+                # acts as some hysteresis for losing the block at 30 fps
+                if self.state in [
+                    State.NAVIGATING,
+                    State.GRABBING,
+                    State.STOCKPILE_PREP,
+                    State.STOCKPILE_PREP_PREP,
+                ]:
+                    self.tag_visible = False
+                    self.logger.warning("No tag visible", throttle_duration_sec=5.0)
+            return
+
+        if self.block_type is not None and msg.type != self.block_type:
+            # TODO: If we want a mislabelled block, we'd have to remove this
+            self.logger.warning("Incorrect Block Size", throttle_duration_sec=5.0)
+            return
+
+        self.tag_visible = True
+        self.missing_tag_count = 0
+        self.observed_block_pose = msg.pose
+
+    def print_pose_euler(self, pose: Pose) -> str:
+        roll, pitch, yaw = euler_from_quaternion(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        )
+        return f"POS: ({pose.position.x:.2f}, {pose.position.y:.2f}), EULER: (Roll: {np.degrees(roll):.2f}, Pitch: {np.degrees(pitch):.2f}, Yaw: {np.degrees(yaw):.2f})"
+
+    def calculate_nav_pose(
+        self, message: RetrievalTask.Goal, stock_pt_safe: tuple[float, float]
+    ) -> PoseStamped:
+        # given a message that contains both the block pose and the stockpile pose
+        block_pose_stamped = message.block.pose
+
+        block_pt = (
+            block_pose_stamped.pose.position.x,
+            block_pose_stamped.pose.position.y,
+        )
+
+        travel_angle = np.math.atan2(
+            block_pt[1] - stock_pt_safe[1], block_pt[0] - stock_pt_safe[0]
+        )
+
+        block_angle = yaw_from_quaternion(
+            q=block_pose_stamped.pose.orientation, use_extrinsics=True
+        )
+
+        # this is how much angle the robot needs to rotate through in order to bring the block to the stockpile (directly)
+        turn_magnitude = np.abs(travel_angle - block_angle)
+
+        pose = block_pose_stamped
+
+        if turn_magnitude < np.pi / 2:
+            # position ourselves along the pos y-axis, facing the start
+            pose.pose.position.x += BLOCK_OFFSET * np.cos(block_angle)
+            pose.pose.position.y += BLOCK_OFFSET * np.sin(block_angle)
+            pose.pose.orientation = reverse_yaw_quaternion(pose.pose.orientation)
+
+        else:
+            pose.pose.position.x -= BLOCK_OFFSET * np.cos(block_angle)
+            pose.pose.position.y -= BLOCK_OFFSET * np.sin(block_angle)
+
+        self.test_pose = pose
+
+        transform = self.odom_transform(
+            self._namespaced_frame("odom"), pose.header.frame_id
+        )
+        self.logger.error(f"TRANSSSSFORM: {transform}", throttle_duration_sec=1.0)
+        pose = do_transform_pose_stamped(pose, transform)
+
+        return pose
+
+    def block_callback(self, msg: OccupancyGrid) -> None:
+        block_arr = np.array(msg.data, dtype=np.int8).reshape(
+            msg.info.height, msg.info.width
+        )
+        origin = msg.info.origin
+        resolution = msg.info.resolution
+
+        self.terminus = resolution * np.array([msg.info.width, msg.info.height])
+        self.origin = np.array([origin.position.x, origin.position.y])
+
+        row_mask, col_mask = np.where(block_arr > 0)
+        x_positions = (col_mask * resolution) + origin.position.x
+        y_positions = (row_mask * resolution) + origin.position.y
+
+        try:
+            transform = self.odom_transform(self._namespaced_frame("odom"), "world")
+            transformed_x = []
+            transformed_y = []
+            for x, y in zip(x_positions, y_positions):
+                pt = PointStamped()
+                pt.header.stamp = self.get_clock().now().to_msg()
+                pt.header.frame_id = "world"
+                pt.point.x = x
+                pt.point.y = y
+
+                transformed_pt = do_transform_point(pt, transform)
+
+                transformed_x.append(transformed_pt.point.x)
+                transformed_y.append(transformed_pt.point.y)
+
+            self.block_positions = np.vstack((transformed_x, transformed_y))
+        except Exception as e:
+            self.logger.warn(
+                f"Failed to find the block positions:\n {e}", throttle_duration_sec=5.0
+            )
+
+            return
+
+    def build_area_callback(self, msg: PolygonStamped):
+        transform = self.odom_transform(self._namespaced_frame("odom"), "world")
+        pts = msg.polygon.points
+        pt_arr = []
+        for pt in [pts[0], pts[2]]:
+            pt_0 = PointStamped()
+            pt_0.header.stamp = self.get_clock().now().to_msg()
+            pt_0.header.frame_id = "world"
+            pt_0.point.x = pt.x
+            pt_0.point.y = pt.y
+            pt_transformed = do_transform_point(pt_0, transform)
+            pt_arr.append(pt_transformed)
+
+        self.build_area_points = [pt_arr[0].x, pt_arr[1].x, pt_arr[0].y, pt_arr[1].y]
+
+    def save_block_pose(self) -> PoseStamped:
+        block_loc = deepcopy(self.observed_block_pose)
+        transform = self.odom_transform(
+            self._namespaced_frame("odom"), block_loc.header.frame_id
+        )
+
+        res = do_transform_pose_stamped(block_loc, transform)
+        res.pose.orientation = self.curr_pose.pose.orientation
+        return res
+
+    def calculate_exit_pose(self) -> PoseStamped:
+        transform = self.tf_buffer.lookup_transform(
+            self._namespaced_frame("odom"),
+            self._namespaced_frame("base_link"),
+            rclpy.time.Time(),
+        )
+
+        pos = PoseStamped()
+        pos.header.frame_id = self._namespaced_frame("base_link")
+        pos.header.stamp = self.get_clock().now().to_msg()
+        pos.pose.position.x = -REVERSE_DISTANCE
+        return do_transform_pose_stamped(pos, transform)
+
+    def stockpile_behavior(
+        self,
+        pose_location: PoseStamped,
+        msg: str,
+        next_state: State,
+        controller: Callable = None,
+    ) -> None:
+        reached = self.go_to_pose(pose_location, controller=controller)
+        if self.tag_visible and reached:
+            self.logger.info(f"[{self.state.name}]{msg}")
+            self.exit_pose = self.calculate_exit_pose()
+            self.state = next_state
+        elif not self.tag_visible:
+            self.send_to_recovery()
+
+    def send_to_recovery(self, msg: str = None) -> None:
+        message = (
+            msg
+            if msg is not None
+            else f"[{self.state.name}]LOST the BLOCK, entering RECOVERY state to attempt recovery"
+        )
+        self.logger.info(message)
+        self.return_state = State.GRABBING
+        self.state = State.RECOVERY
+
+    def create_result(
+        self, success: bool, pose: PoseStamped = None
+    ) -> RetrievalTask.Result:
+        result = RetrievalTask.Result()
+        result.success = success
+        result.delivered = Block()
+        result.delivered.pose = pose or PoseStamped()
+        return result
+
+    def retrieve_callback(self, goal_handle) -> RetrievalTask.Result:
+        """action handler for the retrieve action server"""
+
+        self.logger.info(f"Received retrieve action goal: {goal_handle.request}")
+        if self.state != State.IDLE:
+            self.logger.error(f"Already running an action")
+            goal_handle.abort()
+            result = RetrievalTask.Result()
+            result.success = False
+            return
 
         goal_reached = False
 
         while not goal_reached:
 
-            if self.state == StateMachine.IDLE:
-                self.request_pose = goal_handle.request.goal_pose
-                self.grab_pose = None
-                self.marker_location = None
-                self.logger.info(
-                    f"Received retrieve action goal: {self.request_pose}, entering NAVIGATING state"
-                )
-                self.state = StateMachine.NAVIGATING
+            self.logger.info(
+                f"Current state: {self.state.name}", throttle_duration_sec=1.0
+            )
 
-            elif self.state == StateMachine.NAVIGATING:
-                reached = self.go_to_pose(self.request_pose)
+            if self.state == State.IDLE:
+                stockpile_points = goal_handle.request.stockpile.polygon.points
+                stock_pt = np.mean([(pt.x, pt.y) for pt in stockpile_points], axis=0)
+                stock_pt_safe = (stock_pt[0] - STOCK_CLEARANCE, stock_pt[1])
+
+                stock_pile_quat = quaternion_from_euler(yaw=0, units="degrees")
+
+                self.stockpile_world = PoseStamped()
+                self.stockpile_world.header = goal_handle.request.stockpile.header
+                self.stockpile_world.pose.position.x = stock_pt[0] - 0.25
+                self.stockpile_world.pose.position.y = stock_pt[1]
+                self.stockpile_world.pose.orientation = stock_pile_quat
+
+                self.stockpile_safe_world = PoseStamped()
+                self.stockpile_safe_world.header = goal_handle.request.stockpile.header
+                self.stockpile_safe_world.pose.position.x = stock_pt_safe[0]
+                self.stockpile_safe_world.pose.position.y = stock_pt_safe[1]
+                self.stockpile_safe_world.pose.orientation = stock_pile_quat
+
+                self.stockpile_safe_safe_world = PoseStamped()
+                self.stockpile_safe_safe_world.header = goal_handle.request.stockpile.header
+                self.stockpile_safe_safe_world.pose.position.x = stock_pt_safe[0] + 1
+                self.stockpile_safe_safe_world.pose.position.y = stock_pt_safe[1] + 1.5
+                self.stockpile_safe_safe_world.pose.orientation = quaternion_from_euler(
+                    yaw=270, units="degrees"
+                )
+
+                try:
+                    self.odom_transform(self._namespaced_frame("odom"), "world")
+                except Exception:
+                    self.logger.info(
+                        f"Some frame does not exist, waiting for it to exist"
+                    )
+                    continue
+
+                transform_stockpile = self.odom_transform(
+                    self._namespaced_frame("odom"), self.stockpile_world.header.frame_id
+                )
+
+                self.stockpile = do_transform_pose_stamped(
+                    self.stockpile_world, transform_stockpile
+                )
+                self.stockpile_safe = do_transform_pose_stamped(
+                    self.stockpile_safe_world, transform_stockpile
+                )
+                self.stockpile_safe_safe = do_transform_pose_stamped(
+                    self.stockpile_safe_safe_world, transform_stockpile
+                )
+
+                self.nav_pose = self.calculate_nav_pose(
+                    goal_handle.request, stock_pt_safe
+                )
+                self.observed_block_pose = None
+                self.block_type = goal_handle.request.block.type
+
+                self.logger.info(
+                    f"Received retrieve action goal: {self.nav_pose}, entering NAVIGATING state"
+                )
+                self.init_barriers()
+                self.state = State.NAVIGATING
+
+            elif self.state == State.NAVIGATING:
+                reached = self.go_to_pose(self.nav_pose)
+                if self.observed_block_pose is not None:
+                    self.logger.info(
+                        f"[{self.state.name}]Found block, entering GRABBING state to acquire block"
+                    )
+                    self.grab_pose = self.save_block_pose()
+                    self.state = State.GRABBING
+
+                elif reached and not self.tag_visible:
+                    self.send_to_recovery(
+                        msg=f"[{self.state.name}]Reached target location but no block found, entering RECOVERY state to attempt recovery"
+                    )
+
+            elif self.state == State.GRABBING:
+                # super naive, we should check for block in position here
+                # I think this is where we take down our barriers on the specific block
+                reached = self.go_to_pose(
+                    self.grab_pose, controller=self.pose_controller
+                )
+                self.logger.info(
+                    f"Going to block located at {self.grab_pose.pose}",
+                    throttle_duration_sec=1.0,
+                )
+                if reached:
+                    self.grab_pose = None
+                    self.logger.info(
+                        f"[{self.state.name}]Grabbed block, bringing block to Safe Stockpile Point"
+                    )
+                    self.state = State.STOCKPILE_PREP_PREP
+                    self.reinit_stockpiles = False
+
+            elif self.state == State.STOCKPILE_PREP_PREP:
+                # move to a safe stockpiling location
+                if self.reinit_stockpiles:
+                    transform_stockpile = self.odom_transform(
+                        self._namespaced_frame("odom"), self.stockpile_world.header.frame_id
+                    )
+
+                    self.stockpile = do_transform_pose_stamped(
+                        self.stockpile_world, transform_stockpile
+                    )
+                    self.stockpile_safe = do_transform_pose_stamped(
+                        self.stockpile_safe_world, transform_stockpile
+                    )
+                    self.stockpile_safe_safe = do_transform_pose_stamped(
+                        self.stockpile_safe_safe_world, transform_stockpile
+                    )
+                    self.reinit_stockpiles = False
+                self.stockpile_behavior(
+                    pose_location=self.stockpile_safe_safe,
+                    msg="Reached Safe Safe Stockpile Point, attempting Safe Stockpile",
+                    next_state=State.STOCKPILE_PREP,
+                    controller=self.pose_controller_safe,
+                )
+
+            elif self.state == State.STOCKPILE_PREP:
+                # move to a safe stockpiling location
+                self.stockpile_behavior(
+                    pose_location=self.stockpile_safe,
+                    msg="Reached Safe Stockpile Point, attempting DEPOSIT",
+                    next_state=State.STOCKPILE_DEPOSIT,
+                    controller=self.pose_controller_safe,
+                )
+
+            elif self.state == State.STOCKPILE_DEPOSIT:
+                # move to the specific stockpile location
+                self.stockpile_behavior(
+                    pose_location=self.stockpile,
+                    msg="Stockpiled block, attempting to EXIT the STOCKPILE",
+                    next_state=State.STOCKPILE_EXIT,
+                    controller=self.pose_controller,
+                )
+
+            elif self.state == State.STOCKPILE_EXIT:
+                back_up = self.go_to_pose(self.exit_pose, self.pose_controller_reverse)
+                if back_up:
+                    self.state = State.STOCKPILE_DEPART
+
+            elif self.state == State.STOCKPILE_DEPART:
+                exit_pose = deepcopy(self.stockpile_safe)
+                exit_pose.pose.orientation = reverse_yaw_quaternion(
+                    self.stockpile_safe.pose.orientation
+                )
+                reached = self.go_to_pose(self.stockpile_safe, self.pose_controller_safe)
                 if reached:
                     self.logger.info(
-                        f"Reached block pose, entering FIND_BLOCK_POSE state to locate block"
+                        f"[{self.state.name}]Exited the stockpile successfully, getting safer"
                     )
-                    self.state = StateMachine.FIND_BLOCK_POSE
-            elif self.state == StateMachine.FIND_BLOCK_POSE:
-                if self.grab_pose is not None:
-                    self.logger.info(
-                        f"Found block pose, entering REACH_BLOCK state to orient around block"
-                    )
-                    self.state = StateMachine.REACH_BLOCK
+                    self.state = State.STOCKPILE_FLEE
 
-            elif self.state == StateMachine.REACH_BLOCK:
-                reached = self.go_to_pose(self.grab_pose)
+            elif self.state == State.STOCKPILE_FLEE:
+                exit_pose = deepcopy(self.stockpile_safe_safe)
+                exit_pose.pose.orientation = reverse_yaw_quaternion(
+                    self.stockpile_safe_safe.pose.orientation
+                )
+                reached = self.go_to_pose(self.stockpile_safe_safe, self.pose_controller_safe)
                 if reached:
                     self.logger.info(
-                        f"Reached grab pose, entering GRABBING state to grab block"
+                        f"[{self.state.name}]Exited the stockpile successfully, getting safer"
                     )
-                    self.state = StateMachine.GRABBING
+                    goal_handle.succeed()
+                    result = self.create_result(
+                            success=True, pose=self.observed_block_pose
+                        )
+                    self.state = State.IDLE
+                    return result
 
-            elif self.state == StateMachine.GRABBING:
-                # TODO: This should approach and capture the block
-                self.logger.info(
-                    f"Grabbed block, entering STOCKPILING state to stockpile block"
-                )
-                self.state = StateMachine.STOCKPILING
-                pass
 
-            elif self.state == StateMachine.STOCKPILING:
-                # TODO: This should be changed to be the output of some function from the camera also add functionality
-                feedback_msg.block_captured = True
-                reached = True
-                if feedback_msg.block_captured and reached:
-                    self.logger.info(
-                        f"Stockpiled block, entering RETURNING state to return to start"
+            elif self.state == State.RECOVERY:
+                cmd = Twist()
+                if not self.tag_visible:
+                    self.logger.warning(
+                        "No recovery pose available, spinning robot",
+                        throttle_duration_sec=5.0,
                     )
-                    self.state = StateMachine.RETURNING
-                elif not feedback_msg.block_captured:
-                    self.logger.info(
-                        f"Failed to capture block, entering RECOVERY state to attempt recovery"
-                    )
-                    self.state = StateMachine.RECOVERY
-                pass
+                    cmd.angular.z = 0.2
+                    self.vel_pub.publish(cmd)
+                    continue
+                self.grab_pose = self.save_block_pose()
+                self.state = self.return_state
 
-            # This state is just if we want the robot to return to the starting position
-            elif self.state == StateMachine.RETURNING:
-                if self._start_pose is not None:
-                    goal_reached = self.go_to_pose(self._start_pose)
-                    if goal_reached:
-                        goal_handle.succeed()
-                        result = GoToBlock.Result()
-                        result.success = True
-                        result.end_pose = self.curr_pose
-                        self.state = StateMachine.IDLE
-                        return result
-
-            elif self.state == StateMachine.RECOVERY:
-                # TODO: Add some kind of recovery behavior
-                pass
-
-            feedback_msg.curr_pose = self.curr_pose
-            goal_handle.publish_feedback(feedback_msg)
-
-        result = GoToBlock.Result()
-        result.success = False
-        result.end_pose = self.curr_pose
+        result = self.create_result(success=False, pose=self.observed_block_pose)
         return result
 
-    def angle_wrap(self, angle: float) -> float:
-        wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
-        return wrapped
-
-    def pose_controller(self, target_pose: Pose) -> Twist:
+    def pose_controller(
+        self, target_pose: Pose, reversed: bool = False
+    ) -> tuple[Twist, bool]:
 
         if self.curr_pose is None:
             self.logger.warning("Current pose is unknown, cannot navigate")
             return
 
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
+        self.logger.info(
+            f"Using simple pose controller to go to {target_pose}, from {self.curr_pose}",
+            throttle_duration_sec=2.0,
+        )
+        reached = False
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
         distance = np.sqrt(dx**2 + dy**2)
         angle_to_target = np.arctan2(dy, dx)
-        q_curr = self.curr_pose.orientation
-        _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w
+        q_curr = self.curr_pose.pose.orientation
+        current_yaw = yaw_from_quaternion(q=q_curr, use_extrinsics=True)
+
+        angle_diff = (
+            angle_wrap(angle_to_target - current_yaw)
+            if not reversed
+            else angle_wrap(angle_to_target - (current_yaw + np.pi))
         )
-        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
         q_desired = target_pose.orientation
-        _, _, desired_yaw = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w
-        )
-        desired_yaw_diff = self.angle_wrap(desired_yaw - current_yaw)
+        desired_yaw = yaw_from_quaternion(q=q_desired, use_extrinsics=True)
+
+        desired_yaw_diff = angle_wrap(desired_yaw - current_yaw)
 
         cmd = Twist()
         linear_gain = 0.3  # Arbitrary gain cause why not
         angular_gain = 0.7
 
-        # TODO: Double-check this works with the new changes
-        if abs(angle_diff) > 0.1 and distance > 0.15:
-            cmd.angular.z = angular_gain * angle_diff
+        self.logger.info(
+            f"Controller distance remaining: {distance}, angle difference: {angle_diff}, diff to desired_yaw: {desired_yaw_diff}",
+            throttle_duration_sec=1.0,
+        )
+        if abs(angle_diff) > 0.04 and distance > 0.15:
+            sgn = np.sign(angle_diff)
+            cmd.angular.z = sgn * max(min(angular_gain * abs(angle_diff), 0.2), 0.05)
         else:
-            if distance > 0.1:
-                cmd.linear.x = linear_gain * distance
+            if distance > 0.07:
+                sgn = np.sign(distance) if not reversed else -np.sign(distance)
+                cmd.linear.x = sgn * max(min(linear_gain * distance, 0.2), 0.05)
             else:
-                if abs(desired_yaw_diff) > 0.1:
-                    cmd.angular.z = angular_gain * desired_yaw_diff
+                if abs(desired_yaw_diff) > 0.04:
+                    sgn = np.sign(desired_yaw_diff)
+                    cmd.angular.z = sgn * max(
+                        min(angular_gain * abs(desired_yaw_diff), 0.2), 0.05
+                    )
                 else:
-                    return Twist()
+                    reached = True
 
-        return cmd
+        return cmd, reached
 
-    # TODO: Implement the robot moving backwards
-    def pose_controller_reverse(self, target_pose: Pose) -> Twist:
-        pass
+    def pose_controller_safe(
+        self, target_pose: Pose, reversed: bool = False
+    ) -> tuple[Twist, bool]:
 
-    # TODO: Implement a controller to drive the robot in smooth arcs instead of lines using control lyapunov functions or splines
-    # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain
-    def pose_controller_clf(self, target_pose: Pose, gamma=1.0, k=3.0, h=-0.5) -> Twist:
+        cmd, reached = self.pose_controller(target_pose, reversed)
+        curr_pose = self.curr_pose
+        curr_ori = yaw_from_quaternion(
+            q=curr_pose.pose.orientation, use_extrinsics=True
+        )
+
+        curr_position = [
+            curr_pose.pose.position.x,
+            curr_pose.pose.position.y,
+        ]
+        robo_pose = np.array(
+            [
+                [curr_position[0]],
+                [curr_position[1]],
+                [curr_ori],
+            ]
+        )
+        # I don't want to risk the barriers affecting the block positions in case we use them elsewhere
+        # TODO: Also doublecheck the shapes on these things
+        neighbor_positions = deepcopy(self.neighbor_positions)
+        block_positions = deepcopy(self.block_positions)
+        # block_positions = None
+        if (
+            self.state
+            in [
+                State.GRABBING,
+                State.STOCKPILE_PREP_PREP,
+                State.STOCKPILE_PREP,
+                State.STOCKPILE_DEPOSIT,
+            ]
+            and block_positions is not None
+        ):
+            robot_x, robot_y, yaw = (
+                self.curr_pose.pose.position.x,
+                self.curr_pose.pose.position.y,
+                yaw_from_quaternion(self.curr_pose.pose.orientation),
+            )
+            d = 0.15
+            block_ignore_x, block_ignore_y = robot_x + d * np.cos(
+                yaw
+            ), robot_y + d * np.sin(yaw)
+            point = np.array([[block_ignore_x], [block_ignore_y]])
+            dists = np.linalg.norm(block_positions - point, axis=0).reshape((1, -1))
+            self.logger.info(f"DISTS ({dists.shape})")
+            mask = dists > 0.25
+            mask = np.vstack((mask, mask))
+            removed = block_positions[~mask]
+            self.logger.info(
+                f"Removed ({mask.shape}) the following blocks from barriers: {removed}",
+                throttle_duration_sec=2,
+            )
+            block_positions = block_positions[mask].reshape((2, -1))
+        else:
+            block_positions = None
+        try:
+            safe_cmd = self.barrier_func(
+                cmd,
+                robo_pose,
+                neighbor_positions=neighbor_positions,
+                block_positions=block_positions,
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+            )
+            return Twist(), False
+        return safe_cmd, reached
+
+    # gamma is approach angle gain, k is desired angle gain, and h is rotation error gain. Low gamma will slow down linear velocity as well.
+    def pose_controller_clf(
+        self,
+        target_pose: Pose,
+        gamma: float = 0.6,
+        k: float = 0.8,
+        h: float = 0.5,
+        forward_constraint: bool = False,
+        enable_barriers: bool = True,
+    ) -> tuple[Twist, bool]:
         assert gamma > 0, f"gamma = {gamma} must be greater than 0"
         assert k > gamma, f"k = {k} must be greater than gamma = {gamma}"
         assert h > 0, f"h = {h} must be greater than 0"
 
-        q_curr = self.curr_pose.orientation
-        _, _, theta = euler_from_quaternion(q_curr.x, q_curr.y, q_curr.z, q_curr.w)
-        q_desired = target_pose.orientation
-        _, _, desired_theta = euler_from_quaternion(
-            q_desired.x, q_desired.y, q_desired.z, q_desired.w
-        )
+        if self.curr_pose is None:
+            self.logger.warning("Current pose is unknown, cannot navigate")
+            return Twist, False
 
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
+        self.logger.info(
+            f"Using CLF controller to go to {target_pose}, from {self.curr_pose.pose}",
+            throttle_duration_sec=1.0,
+        )
+        reached = False
+        q_curr = self.curr_pose.pose.orientation
+        theta = yaw_from_quaternion(q=q_curr, use_extrinsics=True)
+        q_desired = target_pose.orientation
+        desired_theta = yaw_from_quaternion(q=q_desired, use_extrinsics=True)
+
+        dx = target_pose.position.x - self.curr_pose.pose.position.x
+        dy = target_pose.position.y - self.curr_pose.pose.position.y
 
         # We're going to do things in the frame of reference of the goal position, because apparently that makes behavior more consistent (shoutout to my old advisor for this controller)
         R = np.array(
@@ -552,63 +743,301 @@ class RetrieveNode(Node):
         theta_error_vec = np.arctan2(position_error[1], position_error[0])
 
         alpha = theta_error_vec - (theta - desired_theta)
-        alpha = self.angle_wrap(alpha)
+        alpha = np.arctan2(np.sin(alpha), np.cos(alpha))
 
+        self.logger.info(
+            f"Current angle: {theta}, desired: {desired_theta}",
+            throttle_duration_sec=1.0,
+        )
+        self.logger.info(
+            f"Controller distance remaining: {e}, angle difference: {alpha}",
+            throttle_duration_sec=1.0,
+        )
         ca = np.cos(alpha)
         sa = np.sin(alpha)
 
         v = gamma * e * ca
-
+        if forward_constraint:
+            v = max(0.0, v)
         # Prevent divide by zero errors
         sinc_alpha = 1.0 if np.abs(alpha) < 1e-6 else (sa / alpha)
-        w = k * alpha * gamma * ca * sinc_alpha * (alpha + h + theta_error_vec)
+        w = k * alpha + gamma * (ca * sinc_alpha) * (alpha + h * theta_error_vec)
+        v_min = 0.05
+        w_min = 0.05
+
+        v = np.sign(v) * max(v_min, np.abs(v))
+        w = np.sign(w) * max(w_min, np.abs(w))
+
+        if e < 0.07:
+            self.logger.info("Position error low", throttle_duration_sec=1.0)
+            if alpha < 0.3:
+                self.logger.info("Angular error low", throttle_duration_sec=1.0)
+                reached = True
+
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = w
-        return cmd
-
-    def check_reached_target(self, target_pose: Pose) -> bool:
-        if self.curr_pose is None:
-            self.logger.warning("Current pose is unknown, cannot navigate")
-            return
-
-        dx = target_pose.position.x - self.curr_pose.position.x
-        dy = target_pose.position.y - self.curr_pose.position.y
-        distance = np.sqrt(dx**2 + dy**2)
-        angle_to_target = np.arctan2(dy, dx)
-        q_curr = self.curr_pose.orientation
-        _, _, current_yaw = euler_from_quaternion(
-            q_curr.x, q_curr.y, q_curr.z, q_curr.w
+        curr_pose = self.curr_pose
+        curr_ori = yaw_from_quaternion(
+            q=curr_pose.pose.orientation, use_extrinsics=True
         )
-        angle_diff = self.angle_wrap(angle_to_target - current_yaw)
 
-        # If we haven't reached the target, return false, else we return true
-        if abs(angle_diff) > 0.1 or distance > 0.1:
-            return False
+        curr_position = [
+            curr_pose.pose.position.x,
+            curr_pose.pose.position.y,
+        ]
+        robo_pose = np.array(
+            [
+                [curr_position[0]],
+                [curr_position[1]],
+                [curr_ori],
+            ]
+        )
+        # I don't want to risk the barriers affecting the block positions in case we use them elsewhere
+        # TODO: Also doublecheck the shapes on these things
+        neighbor_positions = deepcopy(self.neighbor_positions)
+        if enable_barriers:
+            block_positions = deepcopy(self.block_positions)
+            if self.state in [
+                State.GRABBING,
+                State.STOCKPILE_PREP_PREP,
+                State.STOCKPILE_PREP,
+                State.STOCKPILE_DEPOSIT,
+            ]:
+                robot_x, robot_y, yaw = (
+                    self.curr_pose.pose.position.x,
+                    self.curr_pose.pose.position.y,
+                    yaw_from_quaternion(self.curr_pose.pose.orientation),
+                )
+                d = 0.15
+                block_ignore_x, block_ignore_y = robot_x + d * np.cos(
+                    yaw
+                ), robot_y + d * np.sin(yaw)
+                point = np.array([[block_ignore_x], [block_ignore_y]])
+                dists = np.linalg.norm(block_positions - point, axis=0).reshape((1, -1))
+                self.logger.info(f"DISTS ({dists.shape})")
+                mask = dists > 0.25
+                mask = np.vstack((mask, mask))
+                removed = block_positions[~mask]
+                self.logger.info(
+                    f"Removed ({mask.shape}) the following blocks from barriers: {removed}",
+                    throttle_duration_sec=2,
+                )
+                block_positions = block_positions[mask].reshape((2, -1))
+            else:
+                block_positions = None
+            try:
+                safe_cmd = self.barrier_func(
+                    cmd,
+                    robo_pose,
+                    neighbor_positions=neighbor_positions,
+                    block_positions=block_positions,
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"Barriers are unable to produce a safe velocity: {e}\nStopping robot"
+                )
+                return Twist(), False
+            return safe_cmd, reached
 
-        return True
+        return cmd, reached
 
-    def go_to_pose(self, target_pose: Pose, controller=pose_controller) -> bool:
-        # for now, just pretend we went there
-        self.logger.error(f"Gone to pose: {target_pose}")
-        return True
+    # TODO: Implement the robot moving backwards better than this. Made it somewhat better
+    def pose_controller_reverse(self, target_pose: Pose) -> tuple[Twist, bool]:
+        return self.pose_controller(target_pose=target_pose, reversed=True)
 
-        cmd = self.pose_controller(self.request_pose)
+    def pose_controller_clf_free(self, target_pose: Pose) -> tuple[Twist, bool]:
+        return self.pose_controller_clf(target_pose, enable_barriers=False)
+
+    def pose_controller_clf_constrained(self, target_pose: Pose) -> tuple[Twist, bool]:
+        return self.pose_controller_clf(target_pose, forward_constraint=True)
+
+    def pose_controller_clf_free_constrained(
+        self, target_pose: Pose
+    ) -> tuple[Twist, bool]:
+        return self.pose_controller_clf(
+            target_pose, forward_constraint=True, enable_barriers=False
+        )
+
+    def go_to_pose(
+        self,
+        target_pose: PoseStamped,
+        controller: Callable[[Pose], tuple[Twist, bool]] = None,
+    ) -> bool:
+
+        assert target_pose.header.frame_id == self._namespaced_frame("odom")
+        if controller is None:
+            controller = self.pose_controller_clf
+
+        cmd, reached = controller(target_pose.pose)
         self.vel_pub.publish(cmd)
-        reached = self.check_reached_target(self.request_pose)
         return reached
 
+    def brake(self) -> None:
+        self.vel_pub.publish(Twist())
+
+    def _namespaced_frame(self, frame_name: str) -> str:
+        ns = self.get_namespace().strip("/")
+        return f"{ns}/{frame_name}" if ns else frame_name
+
+    def update_visualization(self) -> None:
+        if (
+            False
+        ):  # hasattr(self, "block_positions") and self.block_positions is not None:
+            transposed_block_positions = self.block_positions.T
+            zeros_col = np.zeros((transposed_block_positions.shape[0], 1))
+            transposed_block_positions = np.hstack(
+                (transposed_block_positions, zeros_col)
+            )
+            header = Header()
+            header.frame_id = self._namespaced_frame("odom")
+            header.stamp = (
+                rclpy.clock.Clock().now().to_msg()
+            )  # Adjust to your node's clock if inside a class
+
+            cloud_msg = point_cloud2.create_cloud_xyz32(
+                header, transposed_block_positions.astype(np.float32)
+            )
+            self.pc_pub.publish(cloud_msg)
+
+        msg = MarkerArray()
+        marker_data = {
+            "curr_pose": (self.curr_pose, (1.0, 1.0, 0.0)),
+            "observed_block": (self.observed_block_pose, (1.0, 0.0, 0.0)),
+            "test_pose": (self.test_pose, (1.0, 0.0, 1.0)),
+            "nav_pose": (self.nav_pose, (0.0, 1.0, 1.0)),
+            "stockpile_pose": (self.stockpile, (0.0, 1.0, 0.0)),
+            "stockpile_safe_pose": (self.stockpile_safe, (0.0, 0.0, 1.0)),
+            "stockpile_safe_safe_pose": (self.stockpile_safe_safe, (1.0, 0.5, 0.0)),
+        }
+
+        for i, nary in enumerate(marker_data.items()):
+            label, data = nary
+            if data[0] is None:
+                continue
+            m = Marker()
+            m.header = data[0].header
+            m.ns = self.get_namespace()
+            m.id = i
+            m.text = label
+            m.type = Marker.ARROW
+            m.action = Marker.ADD
+            m.scale.x = 0.5
+            m.scale.y = 0.05
+            m.scale.z = 0.05
+            m.color.r = data[1][0]
+            m.color.g = data[1][1]
+            m.color.b = data[1][2]
+            m.color.a = 1.0
+            m.pose = data[0].pose
+            msg.markers.append(m)
+
+        self.vis_pub.publish(msg)
+
+    def init_barriers(self):
+        if self.terminus is not None and self.origin is not None:
+
+            transform = self.odom_transform(self._namespaced_frame("odom"), "world")
+            origin_pt = PointStamped()
+            origin_pt.header.stamp = self.get_clock().now().to_msg()
+            origin_pt.header.frame_id = "world"
+            origin_pt.point.x = self.origin[0] - 1
+            origin_pt.point.y = self.origin[1] - 1
+
+            terminus_pt = PointStamped()
+            terminus_pt.header.stamp = origin_pt.header.stamp
+            terminus_pt.header.frame_id = "world"
+            terminus_pt.point.x = self.terminus[0] + 1
+            terminus_pt.point.y = self.terminus[1] + 1
+
+            origin_pt_fixed = do_transform_point(origin_pt, transform)
+            terminus_pt_fixed = do_transform_point(terminus_pt, transform)
+            boundary_points = [
+                origin_pt_fixed.point.x,
+                terminus_pt_fixed.point.x,
+                origin_pt_fixed.point.y,
+                terminus_pt_fixed.point.y,
+            ]
+            self.logger.info(
+                f"Initializing barriers with boundaries: {boundary_points}\n Build area points are {self.build_area_points}"
+            )
+            self.logger.info(f"Currently located at {self.curr_pose}")
+            boundary_points = None
+            self.build_area_points = None
+            self.barrier_func = get_robot_barrier_func(
+                boundary_points=boundary_points,
+                build_area_points=self.build_area_points,
+            )
+        else:
+            self.logger.warning("Barriers initialized with fixed values")
+            self.barrier_func = get_robot_barrier_func(
+                boundary_points=[-5.0, 5.0, -5.0, 5.0],
+                build_area_points=[-6, -5.5, -6, -5.5],
+            )
+
+    def odom_transform_cb(self, trans):
+        if hasattr(self, "transform"):
+            if "world" not in self.transform:
+                self.transform["world"] = {}
+            self.transform["world"]["odom"] = trans
+        else:
+            self.transform = {}
+
+    def odom_transform(self, target, source):
+        if hasattr(self, "transform"):
+            if source in self.transform.keys():
+                if target in self.transform[source].keys():
+                    return self.transform[source][target]
+                else:
+                    self.transform[source][target] = self.tf_buffer.lookup_transform(
+                        target, source, rclpy.time.Time()
+                    )
+            else:
+                self.transform[source] = {}
+                self.transform[source][target] = self.tf_buffer.lookup_transform(
+                    target, source, rclpy.time.Time()
+                )
+        else:
+            self.transform = {}
+            self.transform[source] = {}
+            self.transform[source][target] = self.tf_buffer.lookup_transform(
+                target, source, rclpy.time.Time()
+            )
+
+        return self.transform[source][target]
+
+    # TODO: use the world frame and published aruco tags to update the robots position
     @property
-    def curr_pose(self):
-        if hasattr(self, "pose") and self.pose is not None:
-            self.logger.debug("Using pose topic")
-            return self.pose
-        elif hasattr(self, "odom") and self.odom is not None:
-            self.logger.debug("Using odometry topic")
-            return self.odom.pose.pose
+    def curr_pose(self) -> PoseStamped | None:
+        if hasattr(self, "odom") and self.odom is not None:
+            pose = PoseStamped()
+            pose.header.frame_id = self._namespaced_frame("odom")
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.pose = self.odom.pose.pose
+            return pose
         else:
             self.logger.warning("No pose information available")
             return None
+
+    # TODO: Does it make sense to do this as a property? Yes, it does, don't question it
+    @property
+    def neighbor_positions(self) -> np.ndarray:
+        positions = np.zeros((2, len(self.neighbor_list)))
+        for ndx, neighbor_frame in enumerate(self.neighbor_list):
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    self._namespaced_frame("odom"), neighbor_frame, rclpy.time.Time()
+                )
+                positions[0, ndx] = transform.transform.translation.x
+                positions[1, ndx] = transform.transform.translation.y
+            except Exception as e:
+                self.logger.error(
+                    f"Could not compute neighbor transform: {e}",
+                    throttle_duration_sec=5.0,
+                )
+                positions[0, ndx] = -10
+                positions[1, ndx] = -10
+        return positions
 
 
 def main():
